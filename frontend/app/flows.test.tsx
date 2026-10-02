@@ -166,6 +166,12 @@ describe("frontend user flows", () => {
 
     expect(await screen.findByText("VIEWER")).toBeInTheDocument();
     expect(
+      await screen.findByText("0 tasks · 0 done · 0 members"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Organization members (0)" }),
+    ).toBeInTheDocument();
+    expect(
       screen.queryByRole("button", { name: "Add task" }),
     ).not.toBeInTheDocument();
     expect(
