@@ -1,0 +1,15 @@
+{
+  "name": "pmp-frontend",
+  "private": true,
+  "scripts": { "dev": "next dev -H 0.0.0.0", "build": "next build", "lint": "next lint", "format": "prettier --write ." },
+  "dependencies": {
+    "@tanstack/react-query": "^5.51.0",
+    "next": "14.2.5",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20", "@types/react": "^18", "autoprefixer": "^10", "eslint": "^8",
+    "eslint-config-next": "14.2.5", "postcss": "^8", "prettier": "^3", "tailwindcss": "^3.4", "typescript": "^5"
+  }
+}
