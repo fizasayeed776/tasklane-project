@@ -26,7 +26,10 @@ function readSession(): Session {
 }
 
 export default function NotificationsNavbar() {
-  const [session, setSession] = useState<Session>({ access: "", organization: "" });
+  const [session, setSession] = useState<Session>({
+    access: "",
+    organization: "",
+  });
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [open, setOpen] = useState(false);
   const [connectionError, setConnectionError] = useState(false);
@@ -72,7 +75,9 @@ export default function NotificationsNavbar() {
             notification.id &&
             notification.message
           ) {
-            setNotifications((current) => [notification, ...current].slice(0, 20));
+            setNotifications((current) =>
+              [notification, ...current].slice(0, 20),
+            );
           }
         } catch (error) {
           console.error("Received an invalid Tasklane notification.", error);
@@ -117,7 +122,8 @@ export default function NotificationsNavbar() {
           aria-label={`Notifications${notifications.length ? ` (${notifications.length})` : ""}${connectionError ? " disconnected" : ""}`}
           onClick={() => setOpen((value) => !value)}
         >
-          Notifications{notifications.length > 0 ? ` (${notifications.length})` : ""}
+          Notifications
+          {notifications.length > 0 ? ` (${notifications.length})` : ""}
         </button>
       )}
       {open && (
@@ -128,7 +134,10 @@ export default function NotificationsNavbar() {
           ) : (
             <ul className="space-y-2 text-sm">
               {notifications.map((notification) => (
-                <li key={notification.id} className="border-b border-line pb-2 last:border-0">
+                <li
+                  key={notification.id}
+                  className="border-b border-line pb-2 last:border-0"
+                >
                   <Link
                     className="underline"
                     href={`/tasks/${notification.task_id}`}

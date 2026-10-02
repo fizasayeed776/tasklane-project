@@ -92,7 +92,9 @@ def test_project_create_update_and_delete(project_world):
     assert not Project.objects.filter(pk=created["id"]).exists()
 
 
-def test_project_search_ordering_and_filters_are_applied_after_tenant_scope(project_world):
+def test_project_search_ordering_and_filters_are_applied_after_tenant_scope(
+    project_world,
+):
     client = client_for(project_world["owner"])
     response = client.get("/api/projects/?search=second&status=ARCHIVED")
     assert [project["id"] for project in response.json()["results"]] == [
@@ -120,9 +122,12 @@ def test_project_detail_and_mutations_hide_foreign_tenant_objects(project_world)
     client = client_for(project_world["owner"])
     foreign_id = project_world["foreign"].id
     assert client.get(f"/api/projects/{foreign_id}/").status_code == 404
-    assert client.patch(
-        f"/api/projects/{foreign_id}/", {"name": "stolen"}, format="json"
-    ).status_code == 404
+    assert (
+        client.patch(
+            f"/api/projects/{foreign_id}/", {"name": "stolen"}, format="json"
+        ).status_code
+        == 404
+    )
     assert client.delete(f"/api/projects/{foreign_id}/").status_code == 404
     project_world["foreign"].refresh_from_db()
     assert project_world["foreign"].name == "Secret"
@@ -135,12 +140,18 @@ def test_project_write_roles_and_cross_organization_create_are_enforced(project_
     assert missing_organization.status_code == 400
 
     payload = {"name": "New", "organization_id": project_world["org"].id}
-    assert client_for(project_world["member"]).post(
-        "/api/projects/", payload, format="json"
-    ).status_code == 403
-    assert client_for(project_world["viewer"]).post(
-        "/api/projects/", payload, format="json"
-    ).status_code == 403
+    assert (
+        client_for(project_world["member"])
+        .post("/api/projects/", payload, format="json")
+        .status_code
+        == 403
+    )
+    assert (
+        client_for(project_world["viewer"])
+        .post("/api/projects/", payload, format="json")
+        .status_code
+        == 403
+    )
 
     payload["organization_id"] = project_world["other_org"].id
     response = client_for(project_world["owner"]).post(

@@ -28,4 +28,6 @@ class MemberSerializer(serializers.ModelSerializer):
 
 class InviteSerializer(serializers.Serializer):
     email = serializers.EmailField()
-    role = serializers.ChoiceField(choices=OrganizationMember.Role.choices, default="MEMBER")
+    role = serializers.ChoiceField(
+        choices=OrganizationMember.Role.choices, default="MEMBER"
+    )

@@ -11,8 +11,12 @@ def send_assignment_email(task_id):
 
     task = Task.objects.select_related("assigned_to").filter(pk=task_id).first()
     if task and task.assigned_to:
-        send_mail(f"You were assigned: {task.title}", f"Task '{task.title}' is now yours.",
-                  settings.DEFAULT_FROM_EMAIL, [task.assigned_to.email])
+        send_mail(
+            f"You were assigned: {task.title}",
+            f"Task '{task.title}' is now yours.",
+            settings.DEFAULT_FROM_EMAIL,
+            [task.assigned_to.email],
+        )
 
 
 @shared_task
