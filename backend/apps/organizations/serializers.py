@@ -1,7 +1,18 @@
 from rest_framework import serializers
 
-from .models import Organization, OrganizationMember
+from .models import Organization, OrganizationMember, PendingInvitation
 from .services import role_of
+
+
+class ApiErrorDetailSerializer(serializers.Serializer):
+    code = serializers.CharField()
+    message = serializers.CharField()
+    details = serializers.JSONField(required=False)
+
+
+class ApiErrorSerializer(serializers.Serializer):
+    success = serializers.BooleanField()
+    error = ApiErrorDetailSerializer()
 
 
 class OrganizationSerializer(serializers.ModelSerializer):
@@ -29,5 +40,38 @@ class MemberSerializer(serializers.ModelSerializer):
 class InviteSerializer(serializers.Serializer):
     email = serializers.EmailField()
     role = serializers.ChoiceField(
-        choices=OrganizationMember.Role.choices, default="MEMBER"
+        choices=[
+            OrganizationMember.Role.ADMIN,
+            OrganizationMember.Role.MEMBER,
+            OrganizationMember.Role.VIEWER,
+        ],
+        default="MEMBER",
     )
+
+
+class MemberRoleSerializer(serializers.Serializer):
+    role = serializers.ChoiceField(
+        choices=[
+            OrganizationMember.Role.ADMIN,
+            OrganizationMember.Role.MEMBER,
+            OrganizationMember.Role.VIEWER,
+        ]
+    )
+
+
+class PendingInvitationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PendingInvitation
+        fields = ["email", "role"]
+
+
+class InviteResultSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    role = serializers.ChoiceField(
+        choices=[
+            OrganizationMember.Role.ADMIN,
+            OrganizationMember.Role.MEMBER,
+            OrganizationMember.Role.VIEWER,
+        ]
+    )
+    pending = serializers.BooleanField()

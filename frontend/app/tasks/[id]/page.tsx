@@ -251,28 +251,36 @@ export default function TaskPage() {
           {comments.data?.map((c: any) => (
             <li key={c.id}>
               <b>{c.user_name}</b>: {c.content}{" "}
-              <button className="underline" onClick={() => del.mutate(c.id)}>
-                Delete
-              </button>
+              {canWrite(orgRole) &&
+                (c.user === me.data?.id || canManage(orgRole)) && (
+                  <button
+                    className="underline"
+                    onClick={() => del.mutate(c.id)}
+                  >
+                    Delete
+                  </button>
+                )}
             </li>
           ))}
         </ul>
-        <form
-          className="mt-3 flex gap-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            add.mutate();
-          }}
-        >
-          <input
-            className="input"
-            placeholder="Write a comment"
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            required
-          />
-          <button className="btn">Comment</button>
-        </form>
+        {canWrite(orgRole) && (
+          <form
+            className="mt-3 flex gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              add.mutate();
+            }}
+          >
+            <input
+              className="input"
+              placeholder="Write a comment"
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              required
+            />
+            <button className="btn">Comment</button>
+          </form>
+        )}
         {(add.isError || del.isError) && (
           <p role="alert" className="mt-2 text-sm text-warn">
             {errorMessage(add.error || del.error)}
