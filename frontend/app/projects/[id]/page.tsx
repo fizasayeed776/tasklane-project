@@ -24,10 +24,6 @@ export default function ProjectPage() {
     [assignee, setAssignee] = useState("");
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState({ name: "", description: "" });
-  const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteRole, setInviteRole] = useState<"ADMIN" | "MEMBER" | "VIEWER">(
-    "MEMBER",
-  );
   const tasksKey = ["tasks", id, search];
   const project = useQuery<Project>({
     queryKey: ["project", id],
@@ -113,18 +109,6 @@ export default function ProjectPage() {
       await qc.invalidateQueries({ queryKey: ["projects"] });
     },
   });
-  const invite = useMutation({
-    mutationFn: () =>
-      api(`/api/organizations/${orgId}/members/`, {
-        method: "POST",
-        json: { email: inviteEmail, role: inviteRole },
-      }),
-    onSuccess: async () => {
-      setInviteEmail("");
-      await qc.invalidateQueries({ queryKey: ["members", orgId] });
-    },
-  });
-
   const list = tasks.data?.results ?? [];
   return (
     <main className="mx-auto max-w-6xl space-y-4 p-6">
@@ -160,9 +144,8 @@ export default function ProjectPage() {
       </header>
       <p className="text-sm">
         {project.data?.description && `${project.data.description} · `}
-        {list.length} tasks ·{" "}
-        {list.filter((t) => t.status === "DONE").length} done ·{" "}
-        {members.data?.length ?? 0} members
+        {list.length} tasks · {list.filter((t) => t.status === "DONE").length}{" "}
+        done · {members.data?.length ?? 0} members
       </p>
       {editing && manageable && (
         <form
@@ -224,58 +207,18 @@ export default function ProjectPage() {
         </h2>
         <ul className="flex flex-wrap gap-2 text-sm">
           {members.data?.map((member) => (
-            <li key={member.id} className="rounded-md bg-line/50 px-2 py-1">
-              {member.name} · {member.role}
+            <li
+              key={member.id}
+              className="flex items-center gap-2 rounded-md bg-line/50 px-2 py-1"
+            >
+              <span>{member.name}</span>
+              <span className="text-muted">{member.email}</span>
+              <span className="rounded-full bg-line px-2 py-0.5 text-xs font-medium">
+                {member.role}
+              </span>
             </li>
           ))}
         </ul>
-        {manageable && (
-          <form
-            className="flex flex-wrap gap-2"
-            onSubmit={(event: FormEvent<HTMLFormElement>) => {
-              event.preventDefault();
-              invite.mutate();
-            }}
-          >
-            <label className="sr-only" htmlFor="invite-email">
-              Member email
-            </label>
-            <input
-              id="invite-email"
-              className="input max-w-xs"
-              type="email"
-              placeholder="Member email"
-              value={inviteEmail}
-              onChange={(event) => setInviteEmail(event.target.value)}
-              required
-            />
-            <label className="sr-only" htmlFor="invite-role">
-              Member role
-            </label>
-            <select
-              id="invite-role"
-              className="input w-auto"
-              value={inviteRole}
-              onChange={(event) =>
-                setInviteRole(
-                  event.target.value as "ADMIN" | "MEMBER" | "VIEWER",
-                )
-              }
-            >
-              <option value="ADMIN">Admin</option>
-              <option value="MEMBER">Member</option>
-              <option value="VIEWER">Viewer</option>
-            </select>
-            <button className="btn" disabled={invite.isPending}>
-              {invite.isPending ? "Inviting…" : "Invite member"}
-            </button>
-            {invite.isError && (
-              <p role="alert" className="w-full text-sm text-warn">
-                {errorMessage(invite.error)}
-              </p>
-            )}
-          </form>
-        )}
       </section>
       <div className="flex flex-wrap gap-2">
         <input
@@ -323,8 +266,12 @@ export default function ProjectPage() {
       </div>
       {move.isError && (
         <p role="alert" className="text-sm text-warn">
-          Could not move that task: {errorMessage(move.error)}. It was put
-          back.
+          Could not move that task: {errorMessage(move.error)}. It was put back.
+        </p>
+      )}
+      {remove.isError && (
+        <p role="alert" className="text-sm text-warn">
+          {errorMessage(remove.error)}
         </p>
       )}
       <div className="grid gap-3 md:grid-cols-4">

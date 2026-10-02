@@ -1,3 +1,5 @@
+from django.shortcuts import get_object_or_404
+
 from .models import Organization, OrganizationMember
 
 
@@ -7,3 +9,11 @@ def orgs_for_user(user):
 
 def members_of(org):
     return OrganizationMember.objects.filter(organization=org).select_related("user")
+
+
+def member_in_organization(org, member_id):
+    return get_object_or_404(
+        OrganizationMember.objects.select_related("user"),
+        organization=org,
+        pk=member_id,
+    )
