@@ -3,14 +3,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { api, canManage, clearSession, Org } from "@/lib/api";
+import { api, canManage, clearSession, Org, setOrganization } from "@/lib/api";
 
 export default function Dashboard() {
   const qc = useQueryClient(), router = useRouter();
   const [org, setOrg] = useState<string>(""), [name, setName] = useState(""), [pname, setPname] = useState("");
   const orgs = useQuery<Org[]>({ queryKey: ["orgs"], queryFn: () => api("/api/organizations/") });
   const pick = useCallback((id: string) => {
-    localStorage.setItem("org", id);
+    setOrganization(id);
     setOrg(id);
     qc.invalidateQueries();
   }, [qc]);

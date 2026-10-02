@@ -8,10 +8,16 @@ export function setSession(access: string, refresh: string) {
   localStorage.setItem("access", access);
   localStorage.setItem("refresh", refresh);
   document.cookie = "session=1; path=/; max-age=604800; samesite=lax";
+  window.dispatchEvent(new Event("tasklane:session"));
 }
 export function clearSession() {
   localStorage.removeItem("access"); localStorage.removeItem("refresh"); localStorage.removeItem("org");
   document.cookie = "session=; path=/; max-age=0";
+  window.dispatchEvent(new Event("tasklane:session"));
+}
+export function setOrganization(id: string) {
+  localStorage.setItem("org", id);
+  window.dispatchEvent(new Event("tasklane:organization"));
 }
 
 async function refresh(): Promise<boolean> {
@@ -22,6 +28,12 @@ async function refresh(): Promise<boolean> {
   const d = await res.json();
   setSession(d.access, d.refresh ?? r);
   return true;
+}
+
+export async function refreshSession(): Promise<boolean> {
+  const refreshed = await refresh();
+  if (!refreshed) clearSession();
+  return refreshed;
 }
 
 export async function api<T = any>(path: string, init: RequestInit & { json?: unknown } = {}, retry = true): Promise<T> {
