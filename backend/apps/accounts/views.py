@@ -13,8 +13,13 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from .models import User
-from .serializers import (ChangePasswordSerializer, ForgotSerializer, RegisterSerializer,
-                          ResetSerializer, UserSerializer)
+from .serializers import (
+    ChangePasswordSerializer,
+    ForgotSerializer,
+    RegisterSerializer,
+    ResetSerializer,
+    UserSerializer,
+)
 
 
 class ThrottledMixin:
@@ -74,8 +79,12 @@ class ForgotPasswordView(ThrottledMixin, APIView):
             uid = urlsafe_base64_encode(force_bytes(user.pk))
             token = default_token_generator.make_token(user)
             link = f"{settings.FRONTEND_URL}/reset-password?uid={uid}&token={token}"
-            send_mail("Reset your password", link, settings.DEFAULT_FROM_EMAIL, [user.email])
-        return Response({"success": True})  # same answer either way: no account enumeration
+            send_mail(
+                "Reset your password", link, settings.DEFAULT_FROM_EMAIL, [user.email]
+            )
+        return Response(
+            {"success": True}
+        )  # same answer either way: no account enumeration
 
 
 class ResetPasswordView(ThrottledMixin, APIView):
@@ -86,7 +95,9 @@ class ResetPasswordView(ThrottledMixin, APIView):
         s = ResetSerializer(data=request.data)
         s.is_valid(raise_exception=True)
         try:
-            user = User.objects.get(pk=force_str(urlsafe_base64_decode(s.validated_data["uid"])))
+            user = User.objects.get(
+                pk=force_str(urlsafe_base64_decode(s.validated_data["uid"]))
+            )
         except (User.DoesNotExist, ValueError, TypeError):
             raise ValidationError("Invalid reset link.")
         if not default_token_generator.check_token(user, s.validated_data["token"]):

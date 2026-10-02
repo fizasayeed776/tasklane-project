@@ -26,7 +26,9 @@ class JWTAuthMiddleware:
         headers = dict(scope.get("headers", []))
         authorization = headers.get(b"authorization", b"").decode("latin1")
         bearer = authorization.split(" ", 1)
-        token = bearer[1] if len(bearer) == 2 and bearer[0].lower() == "bearer" else None
+        token = (
+            bearer[1] if len(bearer) == 2 and bearer[0].lower() == "bearer" else None
+        )
         if not token:
             token = next(
                 (

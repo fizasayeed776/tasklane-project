@@ -12,7 +12,9 @@ class ProjectViewSet(viewsets.ModelViewSet):
     ordering = ["-created_at"]
 
     def get_queryset(self):
-        return projects_for_user(self.request.user, self.request.headers.get("X-Organization-ID"))
+        return projects_for_user(
+            self.request.user, self.request.headers.get("X-Organization-ID")
+        )
 
     def perform_create(self, serializer):
         serializer.instance = services.create_project(

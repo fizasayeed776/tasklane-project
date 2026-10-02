@@ -49,8 +49,16 @@ export default function ForgotPasswordPage() {
             required
           />
         </label>
-        {message && <p role="status" className="text-sm">{message}</p>}
-        {error && <p role="alert" className="text-sm text-warn">{error}</p>}
+        {message && (
+          <p role="status" className="text-sm">
+            {message}
+          </p>
+        )}
+        {error && (
+          <p role="alert" className="text-sm text-warn">
+            {error}
+          </p>
+        )}
         <button className="btn w-full" disabled={submitting}>
           {submitting ? "Sending…" : "Send reset link"}
         </button>

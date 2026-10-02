@@ -32,7 +32,9 @@ def world(db):
 def test_cannot_access_other_org_task(world):
     c = as_user(world["a"])
     assert c.get(f"/api/tasks/{world['task_b'].id}/").status_code == 404
-    assert c.patch(f"/api/tasks/{world['task_b'].id}/", {"title": "x"}).status_code == 404
+    assert (
+        c.patch(f"/api/tasks/{world['task_b'].id}/", {"title": "x"}).status_code == 404
+    )
     assert c.get("/api/tasks/").json()["results"] == []
 
 
@@ -42,13 +44,17 @@ def test_cannot_list_other_org_projects(world):
 
 
 def test_cannot_create_project_in_foreign_org(world):
-    r = as_user(world["a"]).post("/api/projects/", {"name": "x", "organization_id": world["org_b"].id})
+    r = as_user(world["a"]).post(
+        "/api/projects/", {"name": "x", "organization_id": world["org_b"].id}
+    )
     assert r.status_code == 403
 
 
 def test_viewer_cannot_create_task(world):
     v = User.objects.create_user("v@x.com", "Passw0rd!x")
-    OrganizationMember.objects.create(organization=world["org_a"], user=v, role="VIEWER")
+    OrganizationMember.objects.create(
+        organization=world["org_a"], user=v, role="VIEWER"
+    )
     r = as_user(v).post("/api/tasks/", {"project": world["proj_a"].id, "title": "t"})
     assert r.status_code == 403
 
@@ -62,8 +68,18 @@ def test_status_change_logs_activity(world):
 
 def test_register_and_login(db):
     c = APIClient()
-    assert c.post("/api/auth/register/", {"email": "n@x.com", "password": "Passw0rd!x"}).status_code == 201
-    assert "access" in c.post("/api/auth/login/", {"email": "n@x.com", "password": "Passw0rd!x"}).json()
+    assert (
+        c.post(
+            "/api/auth/register/", {"email": "n@x.com", "password": "Passw0rd!x"}
+        ).status_code
+        == 201
+    )
+    assert (
+        "access"
+        in c.post(
+            "/api/auth/login/", {"email": "n@x.com", "password": "Passw0rd!x"}
+        ).json()
+    )
 
 
 def test_combined_task_filters_search_and_ordering(world):
@@ -72,16 +88,28 @@ def test_combined_task_filters_search_and_ordering(world):
         organization=world["org_a"], user=assignee, role=OrganizationMember.Role.MEMBER
     )
     Task.objects.create(
-        project=world["proj_a"], title="High assigned", status="TODO",
-        priority="HIGH", assigned_to=assignee, created_by=world["a"],
+        project=world["proj_a"],
+        title="High assigned",
+        status="TODO",
+        priority="HIGH",
+        assigned_to=assignee,
+        created_by=world["a"],
     )
     Task.objects.create(
-        project=world["proj_a"], title="High complete", status="DONE",
-        priority="HIGH", assigned_to=assignee, created_by=world["a"],
+        project=world["proj_a"],
+        title="High complete",
+        status="DONE",
+        priority="HIGH",
+        assigned_to=assignee,
+        created_by=world["a"],
     )
     Task.objects.create(
-        project=world["proj_a"], title="Low assigned", status="TODO",
-        priority="LOW", assigned_to=assignee, created_by=world["a"],
+        project=world["proj_a"],
+        title="Low assigned",
+        status="TODO",
+        priority="LOW",
+        assigned_to=assignee,
+        created_by=world["a"],
     )
     client = as_user(world["a"])
     response = client.get(
@@ -122,12 +150,18 @@ def test_comment_owner_can_edit_and_admin_can_moderate(world):
     comment_id = response.json()["id"]
     assert Comment.objects.get(pk=comment_id).user_id == author.id
 
-    assert author_client.patch(
-        f"/api/comments/{comment_id}/", {"content": "Edited"}
-    ).status_code == 200
-    assert as_user(world["a"]).patch(
-        f"/api/comments/{comment_id}/", {"content": "Not yours"}
-    ).status_code == 403
+    assert (
+        author_client.patch(
+            f"/api/comments/{comment_id}/", {"content": "Edited"}
+        ).status_code
+        == 200
+    )
+    assert (
+        as_user(world["a"])
+        .patch(f"/api/comments/{comment_id}/", {"content": "Not yours"})
+        .status_code
+        == 403
+    )
     assert author_client.delete(f"/api/comments/{comment_id}/").status_code == 204
 
     moderated = Comment.objects.create(task=task, user=author, content="Moderate me")
@@ -176,18 +210,25 @@ def test_cross_organization_task_comment_and_activity_access_is_hidden(world):
     client = as_user(world["a"])
 
     assert client.get(f"/api/tasks/{foreign_task.id}/").status_code == 404
-    assert client.patch(
-        f"/api/tasks/{foreign_task.id}/", {"title": "changed"}
-    ).status_code == 404
+    assert (
+        client.patch(f"/api/tasks/{foreign_task.id}/", {"title": "changed"}).status_code
+        == 404
+    )
     assert client.delete(f"/api/tasks/{foreign_task.id}/").status_code == 404
     assert client.get(f"/api/tasks/{foreign_task.id}/comments/").status_code == 404
-    assert client.post(
-        f"/api/tasks/{foreign_task.id}/comments/", {"content": "injected"}
-    ).status_code == 404
+    assert (
+        client.post(
+            f"/api/tasks/{foreign_task.id}/comments/", {"content": "injected"}
+        ).status_code
+        == 404
+    )
     assert client.get(f"/api/tasks/{foreign_task.id}/activity/").status_code == 404
-    assert client.patch(
-        f"/api/comments/{foreign_comment.id}/", {"content": "changed"}
-    ).status_code == 404
+    assert (
+        client.patch(
+            f"/api/comments/{foreign_comment.id}/", {"content": "changed"}
+        ).status_code
+        == 404
+    )
     assert client.delete(f"/api/comments/{foreign_comment.id}/").status_code == 404
     assert client.get("/api/activity/").json() == []
 
@@ -259,9 +300,7 @@ def test_task_status_priority_assignment_logs_and_admin_delete(monkeypatch):
         lambda task_id: sent.append(task_id),
     )
     client = as_user(owner)
-    response = client.post(
-        "/api/tasks/", {"project": project.id, "title": "Work"}
-    )
+    response = client.post("/api/tasks/", {"project": project.id, "title": "Work"})
     assert response.status_code == 201
     task_id = response.json()["id"]
 
@@ -321,10 +360,13 @@ def test_task_comment_and_activity_reads_and_dashboard_statistics(world):
         "overdue": 1,
     }
     assert done.status == Task.Status.DONE
-    assert client.get(
-        "/api/dashboard/",
-        HTTP_X_ORGANIZATION_ID=str(world["org_b"].id),
-    ).json()["total_tasks"] == 0
+    assert (
+        client.get(
+            "/api/dashboard/",
+            HTTP_X_ORGANIZATION_ID=str(world["org_b"].id),
+        ).json()["total_tasks"]
+        == 0
+    )
 
 
 @pytest.mark.django_db(transaction=True)
