@@ -159,7 +159,8 @@ export default function ProjectPage() {
         )}
       </header>
       <p className="text-sm">
-        {project.data?.description} · {list.length} tasks ·{" "}
+        {project.data?.description && `${project.data.description} · `}
+        {list.length} tasks ·{" "}
         {list.filter((t) => t.status === "DONE").length} done ·{" "}
         {members.data?.length ?? 0} members
       </p>
@@ -219,7 +220,7 @@ export default function ProjectPage() {
       )}
       <section className="panel space-y-3">
         <h2 className="font-semibold">
-          Project members ({members.data?.length ?? 0})
+          Organization members ({members.data?.length ?? 0})
         </h2>
         <ul className="flex flex-wrap gap-2 text-sm">
           {members.data?.map((member) => (
@@ -311,7 +312,7 @@ export default function ProjectPage() {
                 </option>
               ))}
             </select>
-            <button className="btn">Add task</button>
+            <button className="btn shrink-0 whitespace-nowrap">Add task</button>
             {create.isError && (
               <p role="alert" className="text-sm text-warn">
                 {errorMessage(create.error)}
