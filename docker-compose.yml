@@ -1,0 +1,29 @@
+x-backend: &backend
+  build: ./backend
+  env_file: .env
+  volumes: ["./backend:/app"]
+  depends_on: [db, redis]
+services:
+  db:
+    image: postgres:16-alpine
+    env_file: .env
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+  redis:
+    image: redis:7-alpine
+  backend:
+    <<: *backend
+    command: sh -c "python manage.py makemigrations accounts organizations projects tasks && python manage.py migrate && gunicorn config.wsgi -b 0.0.0.0:8000"
+    ports: ["8000:8000"]
+  celery-worker:
+    <<: *backend
+    command: celery -A config worker -l info
+  celery-beat:
+    <<: *backend
+    command: celery -A config beat -l info
+  frontend:
+    build: ./frontend
+    env_file: .env
+    ports: ["3000:3000"]
+    depends_on: [backend]
+volumes:
+  pgdata:
