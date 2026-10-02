@@ -1,0 +1,12 @@
+.env
+*.py[cod]
+__pycache__/
+.pytest_cache/
+.coverage
+htmlcov/
+db.sqlite3
+backend/celerybeat-schedule*
+node_modules/
+.next/
+coverage/
+*.log
