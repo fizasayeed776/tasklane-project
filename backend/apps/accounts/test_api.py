@@ -72,11 +72,14 @@ def test_refresh_rotates_and_blacklists_previous_refresh_token():
     assert rotated.status_code == 200
     assert rotated.json()["refresh"] != tokens["refresh"]
     assert rotated.json()["access"]
-    assert client.post(
-        "/api/auth/refresh/",
-        {"refresh": tokens["refresh"]},
-        format="json",
-    ).status_code == 401
+    assert (
+        client.post(
+            "/api/auth/refresh/",
+            {"refresh": tokens["refresh"]},
+            format="json",
+        ).status_code
+        == 401
+    )
 
 
 def test_logout_blacklists_refresh_token():
@@ -91,11 +94,14 @@ def test_logout_blacklists_refresh_token():
         format="json",
     )
     assert response.status_code == 204
-    assert client.post(
-        "/api/auth/refresh/",
-        {"refresh": tokens["refresh"]},
-        format="json",
-    ).status_code == 401
+    assert (
+        client.post(
+            "/api/auth/refresh/",
+            {"refresh": tokens["refresh"]},
+            format="json",
+        ).status_code
+        == 401
+    )
     invalid_logout = client.post(
         "/api/auth/logout/",
         {"refresh": "invalid"},
@@ -120,18 +126,23 @@ def test_me_and_password_change_only_update_allowed_fields():
     assert response.json()["email"] == "user@example.com"
     assert response.json()["first_name"] == "Tasklane"
 
-    assert client.post(
-        "/api/auth/password/change/",
-        {"old_password": "incorrect", "new_password": "AnotherStrong!567"},
-        format="json",
-    ).status_code == 400
+    assert (
+        client.post(
+            "/api/auth/password/change/",
+            {"old_password": "incorrect", "new_password": "AnotherStrong!567"},
+            format="json",
+        ).status_code
+        == 400
+    )
     response = client.post(
         "/api/auth/password/change/",
         {"old_password": "StrongPass!234", "new_password": "AnotherStrong!567"},
         format="json",
     )
     assert response.status_code == 200
-    assert User.objects.get(email="user@example.com").check_password("AnotherStrong!567")
+    assert User.objects.get(email="user@example.com").check_password(
+        "AnotherStrong!567"
+    )
 
 
 @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
@@ -167,15 +178,18 @@ def test_forgot_password_is_non_enumerating_and_reset_token_is_single_use():
     )
     assert reset.status_code == 200
     assert User.objects.get(email="user@example.com").check_password("ResetStrong!890")
-    assert client.post(
-        "/api/auth/password/reset/",
-        {
-            "uid": query["uid"][0],
-            "token": query["token"][0],
-            "new_password": "ReuseStrong!891",
-        },
-        format="json",
-    ).status_code == 400
+    assert (
+        client.post(
+            "/api/auth/password/reset/",
+            {
+                "uid": query["uid"][0],
+                "token": query["token"][0],
+                "new_password": "ReuseStrong!891",
+            },
+            format="json",
+        ).status_code
+        == 400
+    )
     assert login(client, password="ResetStrong!890").status_code == 200
 
     client.post(
@@ -246,8 +260,7 @@ def test_auth_endpoints_are_throttled():
     cache.clear()
     client = APIClient()
     responses = [
-        register(client, email=f"user{index}@example.com")
-        for index in range(11)
+        register(client, email=f"user{index}@example.com") for index in range(11)
     ]
     assert all(response.status_code == 201 for response in responses[:10])
     assert responses[-1].status_code == 429
@@ -260,8 +273,6 @@ def test_password_validation_and_user_manager():
     assert response.status_code == 400
     assert not User.objects.filter(email="user@example.com").exists()
 
-    superuser = User.objects.create_superuser(
-        "root@example.com", "StrongPass!234"
-    )
+    superuser = User.objects.create_superuser("root@example.com", "StrongPass!234")
     assert superuser.is_staff
     assert superuser.is_superuser

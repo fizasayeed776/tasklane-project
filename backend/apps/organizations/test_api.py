@@ -108,7 +108,11 @@ def test_member_cannot_invite_or_elevate_existing_membership(org_world):
         format="json",
     )
     assert response.status_code == 403
-    assert not org_world["outsider"].memberships.filter(organization=org_world["org"]).exists()
+    assert (
+        not org_world["outsider"]
+        .memberships.filter(organization=org_world["org"])
+        .exists()
+    )
 
 
 def test_invitation_requires_registered_account(org_world):

@@ -16,7 +16,12 @@ class RegisterSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ["id", "email", "first_name", "password"]  # explicit: no mass assignment of is_staff etc.
+        fields = [
+            "id",
+            "email",
+            "first_name",
+            "password",
+        ]  # explicit: no mass assignment of is_staff etc.
 
     def validate_password(self, value):
         validate_password(value)

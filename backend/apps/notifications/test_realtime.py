@@ -30,7 +30,9 @@ def websocket_path(user, organization_id, token=None):
 
 
 @pytest.mark.django_db(transaction=True)
-@override_settings(CHANNEL_LAYERS={"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}})
+@override_settings(
+    CHANNEL_LAYERS={"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
+)
 def test_websocket_authenticates_jwt_and_delivers_org_notification(websocket_headers):
     user = User.objects.create_user("subscriber@example.com", "StrongPass!234")
     organization = create_organization(user, "Subscribers")
@@ -41,6 +43,7 @@ def test_websocket_authenticates_jwt_and_delivers_org_notification(websocket_hea
         headers=websocket_headers,
         subprotocols=protocols,
     )
+
     async def exchange():
         connected, _ = await communicator.connect()
         assert connected
@@ -70,7 +73,9 @@ def test_websocket_authenticates_jwt_and_delivers_org_notification(websocket_hea
 
 
 @pytest.mark.django_db(transaction=True)
-@override_settings(CHANNEL_LAYERS={"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}})
+@override_settings(
+    CHANNEL_LAYERS={"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
+)
 def test_websocket_rejects_missing_and_expired_jwt(websocket_headers):
     user = User.objects.create_user("subscriber@example.com", "StrongPass!234")
     organization = create_organization(user, "Subscribers")
@@ -99,7 +104,9 @@ def test_websocket_rejects_missing_and_expired_jwt(websocket_headers):
 
 
 @pytest.mark.django_db(transaction=True)
-@override_settings(CHANNEL_LAYERS={"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}})
+@override_settings(
+    CHANNEL_LAYERS={"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
+)
 def test_websocket_closes_when_access_token_expires(websocket_headers):
     user = User.objects.create_user("subscriber@example.com", "StrongPass!234")
     organization = create_organization(user, "Subscribers")
@@ -126,7 +133,9 @@ def test_websocket_closes_when_access_token_expires(websocket_headers):
 
 
 @pytest.mark.django_db(transaction=True)
-@override_settings(CHANNEL_LAYERS={"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}})
+@override_settings(
+    CHANNEL_LAYERS={"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
+)
 def test_websocket_requires_organization_membership(websocket_headers):
     user = User.objects.create_user("member@example.com", "StrongPass!234")
     owner = User.objects.create_user("owner@example.com", "StrongPass!234")
@@ -144,7 +153,9 @@ def test_websocket_requires_organization_membership(websocket_headers):
 
 
 @pytest.mark.django_db(transaction=True)
-@override_settings(CHANNEL_LAYERS={"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}})
+@override_settings(
+    CHANNEL_LAYERS={"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
+)
 def test_websocket_requires_a_valid_organization_parameter(websocket_headers):
     user = User.objects.create_user("member@example.com", "StrongPass!234")
     path, protocols = websocket_path(user, "not-an-id")
@@ -160,7 +171,9 @@ def test_websocket_requires_a_valid_organization_parameter(websocket_headers):
 
 
 @pytest.mark.django_db(transaction=True)
-@override_settings(CHANNEL_LAYERS={"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}})
+@override_settings(
+    CHANNEL_LAYERS={"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
+)
 def test_user_notification_is_only_delivered_to_intended_recipient(websocket_headers):
     recipient = User.objects.create_user("recipient@example.com", "StrongPass!234")
     other = User.objects.create_user("other@example.com", "StrongPass!234")
@@ -172,6 +185,7 @@ def test_user_notification_is_only_delivered_to_intended_recipient(websocket_hea
         headers=websocket_headers,
         subprotocols=protocols,
     )
+
     async def exchange():
         connected, _ = await communicator.connect()
         assert connected
@@ -211,7 +225,9 @@ def test_user_notification_is_only_delivered_to_intended_recipient(websocket_hea
 
 
 @pytest.mark.django_db(transaction=True)
-@override_settings(CHANNEL_LAYERS={"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}})
+@override_settings(
+    CHANNEL_LAYERS={"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
+)
 def test_websocket_closes_after_organization_membership_is_revoked(websocket_headers):
     user = User.objects.create_user("subscriber@example.com", "StrongPass!234")
     organization = create_organization(user, "Subscribers")
@@ -249,7 +265,9 @@ def test_websocket_closes_after_organization_membership_is_revoked(websocket_hea
 
 
 @pytest.mark.django_db(transaction=True)
-@override_settings(CHANNEL_LAYERS={"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}})
+@override_settings(
+    CHANNEL_LAYERS={"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
+)
 def test_task_services_publish_assignment_comment_and_status_events(monkeypatch):
     from apps.organizations.models import OrganizationMember
     from apps.projects.models import Project
@@ -270,7 +288,9 @@ def test_task_services_publish_assignment_comment_and_status_events(monkeypatch)
         "apps.tasks.services.publish_notification",
         lambda *args, **kwargs: published.append((args, kwargs)),
     )
-    monkeypatch.setattr("apps.tasks.services.send_assignment_email.delay", lambda _id: None)
+    monkeypatch.setattr(
+        "apps.tasks.services.send_assignment_email.delay", lambda _id: None
+    )
 
     task = create_task(
         owner,

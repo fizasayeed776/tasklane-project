@@ -86,22 +86,44 @@ describe("frontend user flows", () => {
   });
 
   it("creates a task in the current project", async () => {
-    mocks.api.mockImplementation(async (endpoint: string, init?: RequestInit & { json?: unknown }) => {
-      if (endpoint === "/api/projects/1/") {
-        return { id: 1, organization: 2, name: "Roadmap", description: "", status: "ACTIVE", created_by: 1 };
-      }
-      if (endpoint === "/api/organizations/") {
-        return [{ id: 2, name: "Acme", role: "MEMBER" }];
-      }
-      if (endpoint === "/api/organizations/2/members/") {
-        return [{ id: 3, user_id: 5, email: "member@example.com", name: "Member", role: "MEMBER" }];
-      }
-      if (endpoint.startsWith("/api/tasks/?")) return { results: [] };
-      if (endpoint === "/api/tasks/" && init?.method === "POST") {
-        return { id: 42, project: 1, title: "Write release notes", status: "TODO" };
-      }
-      throw new Error(`Unexpected API call: ${endpoint}`);
-    });
+    mocks.api.mockImplementation(
+      async (endpoint: string, init?: RequestInit & { json?: unknown }) => {
+        if (endpoint === "/api/projects/1/") {
+          return {
+            id: 1,
+            organization: 2,
+            name: "Roadmap",
+            description: "",
+            status: "ACTIVE",
+            created_by: 1,
+          };
+        }
+        if (endpoint === "/api/organizations/") {
+          return [{ id: 2, name: "Acme", role: "MEMBER" }];
+        }
+        if (endpoint === "/api/organizations/2/members/") {
+          return [
+            {
+              id: 3,
+              user_id: 5,
+              email: "member@example.com",
+              name: "Member",
+              role: "MEMBER",
+            },
+          ];
+        }
+        if (endpoint.startsWith("/api/tasks/?")) return { results: [] };
+        if (endpoint === "/api/tasks/" && init?.method === "POST") {
+          return {
+            id: 42,
+            project: 1,
+            title: "Write release notes",
+            status: "TODO",
+          };
+        }
+        throw new Error(`Unexpected API call: ${endpoint}`);
+      },
+    );
     renderProjectPage();
 
     fireEvent.change(await screen.findByPlaceholderText("New task title"), {
@@ -124,7 +146,14 @@ describe("frontend user flows", () => {
   it("hides task creation and deletion controls from viewers", async () => {
     mocks.api.mockImplementation(async (endpoint: string) => {
       if (endpoint === "/api/projects/1/") {
-        return { id: 1, organization: 2, name: "Roadmap", description: "", status: "ACTIVE", created_by: 1 };
+        return {
+          id: 1,
+          organization: 2,
+          name: "Roadmap",
+          description: "",
+          status: "ACTIVE",
+          created_by: 1,
+        };
       }
       if (endpoint === "/api/organizations/") {
         return [{ id: 2, name: "Acme", role: "VIEWER" }];
@@ -136,9 +165,15 @@ describe("frontend user flows", () => {
     renderProjectPage();
 
     expect(await screen.findByText("VIEWER")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Add task" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Invite member" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Add task" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Delete" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Invite member" }),
+    ).not.toBeInTheDocument();
   });
 
   it("receives scoped notifications in the navbar without polling", async () => {
@@ -168,9 +203,8 @@ describe("frontend user flows", () => {
       }),
     } as MessageEvent);
 
-    expect(await screen.findByRole("link", { name: "A teammate commented." })).toHaveAttribute(
-      "href",
-      "/tasks/8",
-    );
+    expect(
+      await screen.findByRole("link", { name: "A teammate commented." }),
+    ).toHaveAttribute("href", "/tasks/8");
   });
 });
