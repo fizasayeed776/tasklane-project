@@ -1,10 +1,12 @@
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from drf_spectacular.utils import extend_schema
 
 from apps.projects.serializers import ProjectSerializer
 
 from . import selectors, services
+from .models import Organization
 from .serializers import InviteSerializer, MemberSerializer, OrganizationSerializer
 
 
@@ -14,6 +16,7 @@ class OrganizationViewSet(
     mixins.RetrieveModelMixin,
     viewsets.GenericViewSet,
 ):
+    queryset = Organization.objects.none()
     serializer_class = OrganizationSerializer
     pagination_class = None
 
@@ -27,7 +30,16 @@ class OrganizationViewSet(
             self.request.user, serializer.validated_data["name"]
         )
 
-    @action(detail=True, methods=["get", "post"])
+    @extend_schema(
+        methods=["GET"],
+        responses={200: MemberSerializer(many=True)},
+    )
+    @extend_schema(
+        methods=["POST"],
+        request=InviteSerializer,
+        responses={201: MemberSerializer},
+    )
+    @action(detail=True, methods=["get", "post"], filter_backends=[])
     def members(self, request, pk=None):
         org = self.get_object()
         if request.method == "POST":
@@ -39,7 +51,8 @@ class OrganizationViewSet(
             )
         return Response(MemberSerializer(selectors.members_of(org), many=True).data)
 
-    @action(detail=True, methods=["get"])
+    @extend_schema(responses={200: ProjectSerializer(many=True)})
+    @action(detail=True, methods=["get"], filter_backends=[])
     def projects(self, request, pk=None):
         org = (
             self.get_object()
