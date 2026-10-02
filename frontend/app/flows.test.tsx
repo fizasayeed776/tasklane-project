@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   api: vi.fn(),
@@ -19,6 +19,23 @@ vi.mock("@/lib/api", async (importOriginal) => {
 
 import Login from "./login/page";
 import ProjectPage from "./projects/[id]/page";
+import NotificationsNavbar from "./components/NotificationsNavbar";
+
+class MockWebSocket {
+  static instances: MockWebSocket[] = [];
+  onopen: ((event: Event) => void) | null = null;
+  onmessage: ((event: MessageEvent) => void) | null = null;
+  onclose: ((event: CloseEvent) => void) | null = null;
+
+  constructor(
+    public url: string | URL,
+    public protocols?: string | string[],
+  ) {
+    MockWebSocket.instances.push(this);
+  }
+
+  close() {}
+}
 
 function renderProjectPage() {
   const client = new QueryClient({
@@ -35,6 +52,11 @@ describe("frontend user flows", () => {
   beforeEach(() => {
     mocks.api.mockReset();
     mocks.push.mockReset();
+    MockWebSocket.instances = [];
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it("logs in, stores the session, and navigates to the dashboard", async () => {
@@ -117,5 +139,38 @@ describe("frontend user flows", () => {
     expect(screen.queryByRole("button", { name: "Add task" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Invite member" })).not.toBeInTheDocument();
+  });
+
+  it("receives scoped notifications in the navbar without polling", async () => {
+    vi.stubGlobal("WebSocket", MockWebSocket);
+    localStorage.setItem("access", "short-lived-access-token");
+    localStorage.setItem("org", "2");
+    render(<NotificationsNavbar />);
+
+    await waitFor(() => expect(MockWebSocket.instances).toHaveLength(1));
+    const socket = MockWebSocket.instances[0];
+    expect(String(socket.url)).toContain("organization_id=2");
+    expect(String(socket.url)).not.toContain("token=");
+    expect(socket.protocols).toEqual([
+      "tasklane",
+      "jwt.short-lived-access-token",
+    ]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Notifications" }));
+    socket.onmessage?.({
+      data: JSON.stringify({
+        id: "event-1",
+        type: "comment_added",
+        organization_id: 2,
+        task_id: 8,
+        message: "A teammate commented.",
+        created_at: "2026-10-02T18:00:00Z",
+      }),
+    } as MessageEvent);
+
+    expect(await screen.findByRole("link", { name: "A teammate commented." })).toHaveAttribute(
+      "href",
+      "/tasks/8",
+    );
   });
 });
