@@ -15,8 +15,8 @@ class TaskSerializer(serializers.ModelSerializer):
     class Meta:
         model = Task
         fields = ["id", "project", "organization", "title", "description", "status", "priority", "assigned_to",
-                  "assigned_to_name", "created_by_name", "due_date", "created_at", "updated_at"]
-        read_only_fields = ["id", "created_at", "updated_at"]
+                  "assigned_to_name", "created_by", "created_by_name", "due_date", "created_at", "updated_at"]
+        read_only_fields = ["id", "created_by", "created_at", "updated_at"]
 
     def get_fields(self):
         fields = super().get_fields()
