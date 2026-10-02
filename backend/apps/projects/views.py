@@ -1,10 +1,39 @@
 from rest_framework import viewsets
+from drf_spectacular.utils import OpenApiParameter, extend_schema_view, extend_schema
+
 from . import services
+from .models import Project
 from .selectors import projects_for_user
 from .serializers import ProjectSerializer
 
 
+@extend_schema_view(
+    list=extend_schema(
+        parameters=[
+            OpenApiParameter(
+                "status",
+                str,
+                OpenApiParameter.QUERY,
+                enum=["ACTIVE", "ARCHIVED"],
+                description="Filter projects by lifecycle status.",
+            ),
+            OpenApiParameter(
+                "organization",
+                int,
+                OpenApiParameter.QUERY,
+                description="Optional organization filter; membership scope still applies.",
+            ),
+            OpenApiParameter(
+                "X-Organization-ID",
+                str,
+                OpenApiParameter.HEADER,
+                description="Optional organization context; it never grants access.",
+            ),
+        ]
+    ),
+)
 class ProjectViewSet(viewsets.ModelViewSet):
+    queryset = Project.objects.none()
     serializer_class = ProjectSerializer
     filterset_fields = ["status", "organization"]
     search_fields = ["name", "description"]

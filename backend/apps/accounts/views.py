@@ -11,13 +11,16 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+from drf_spectacular.utils import extend_schema
 
 from .models import User
 from .serializers import (
     ChangePasswordSerializer,
     ForgotSerializer,
+    LogoutSerializer,
     RegisterSerializer,
     ResetSerializer,
+    SuccessSerializer,
     UserSerializer,
 )
 
@@ -41,6 +44,7 @@ class RefreshView(ThrottledMixin, TokenRefreshView):
 
 
 class LogoutView(ThrottledMixin, APIView):
+    @extend_schema(request=LogoutSerializer, responses={204: None})
     def post(self, request):
         try:
             RefreshToken(request.data.get("refresh", "")).blacklist()
@@ -57,6 +61,10 @@ class MeView(generics.RetrieveUpdateAPIView):
 
 
 class ChangePasswordView(ThrottledMixin, APIView):
+    @extend_schema(
+        request=ChangePasswordSerializer,
+        responses={200: SuccessSerializer},
+    )
     def post(self, request):
         s = ChangePasswordSerializer(data=request.data)
         s.is_valid(raise_exception=True)
@@ -71,6 +79,7 @@ class ForgotPasswordView(ThrottledMixin, APIView):
     permission_classes = [AllowAny]
     authentication_classes: list = []
 
+    @extend_schema(request=ForgotSerializer, responses={200: SuccessSerializer})
     def post(self, request):
         s = ForgotSerializer(data=request.data)
         s.is_valid(raise_exception=True)
@@ -91,6 +100,7 @@ class ResetPasswordView(ThrottledMixin, APIView):
     permission_classes = [AllowAny]
     authentication_classes: list = []
 
+    @extend_schema(request=ResetSerializer, responses={200: SuccessSerializer})
     def post(self, request):
         s = ResetSerializer(data=request.data)
         s.is_valid(raise_exception=True)
