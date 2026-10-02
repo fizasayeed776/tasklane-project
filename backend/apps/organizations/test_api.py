@@ -509,3 +509,31 @@ def test_projects_action_returns_only_the_requested_organization(org_world):
     )
     assert response.status_code == 200
     assert [item["id"] for item in response.json()] == [project.id]
+
+
+def test_openapi_documents_member_mutation_security_and_error_responses():
+    response = APIClient().get("/api/schema/?format=json")
+    assert response.status_code == 200
+    schema = response.json()
+    operations = schema["paths"]["/api/organizations/{id}/members/{member_id}/"]
+
+    for method, expected_errors in (
+        ("patch", {"400", "401", "403", "404", "429"}),
+        ("delete", {"401", "403", "404", "429"}),
+    ):
+        operation = operations[method]
+        assert any("jwtAuth" in security for security in operation["security"])
+        assert expected_errors <= operation["responses"].keys()
+        for status_code in expected_errors:
+            error_schema = operation["responses"][status_code]["content"][
+                "application/json"
+            ]["schema"]
+            assert error_schema["$ref"].endswith("/ApiError")
+
+    patch = operations["patch"]
+    assert any(
+        parameter["name"] == "member_id"
+        and parameter["in"] == "path"
+        and parameter["schema"]["type"] == "integer"
+        for parameter in patch["parameters"]
+    )

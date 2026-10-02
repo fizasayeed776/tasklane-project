@@ -74,7 +74,7 @@ The REST API is rooted at `/api/`:
 | Resource | Routes |
 | --- | --- |
 | Authentication | `/api/auth/register/`, `/login/`, `/refresh/`, `/logout/`, `/me/`, `/password/change/`, `/password/forgot/`, `/password/reset/` |
-| Organizations | `/api/organizations/`, `/api/organizations/{id}/`, `/members/`, `/projects/` |
+| Organizations | `/api/organizations/`, `/api/organizations/{id}/`, `/api/organizations/{id}/members/` (GET/POST), `/api/organizations/{id}/members/{member_id}/` (PATCH/DELETE), `/api/organizations/{id}/projects/` |
 | Projects | `/api/projects/`, `/api/projects/{id}/` |
 | Tasks | `/api/tasks/`, `/api/tasks/{id}/`, `/comments/`, `/activity/` |
 | Comments | `/api/comments/{id}/` (edit/delete) |
@@ -91,7 +91,7 @@ Tasks can also be filtered by `project`; project lists support `status` and `org
 ### Authentication flow
 
 - Registration and login accept JSON; login returns short-lived access and refresh JWTs.
-- Protected HTTP requests send `Authorization: Bearer <access-token>`.
+- Protected HTTP requests send Authorization: Bearer <access-token>.
 - Access tokens last 15 minutes by default; refresh tokens last 7 days by default. Both values are configurable.
 - The frontend stores the tokens in browser `localStorage` and refreshes after a 401. Refresh rotation is enabled and the replaced refresh token is blacklisted.
 - Logout blacklists the submitted refresh token. Password-change and reset endpoints validate the new password with Django's configured validators.
@@ -102,7 +102,15 @@ Tasks can also be filtered by `project`; project lists support `status` and `org
 
 Every list and detail selector scopes results through the authenticated user's organization membership. A resource outside that scope is not exposed by detail endpoints. `X-Organization-ID` is an optional context/filter header; it can narrow a membership-scoped result but never grants access. Mutations derive the organization from the database-backed project/task or validate organization membership and role before writing.
 
-Roles are ordered `OWNER > ADMIN > MEMBER > VIEWER`. Owners and admins manage projects and members; members can create tasks and update tasks they created or are assigned to; viewers are read-only. Deleting tasks requires admin-level permission. Comment authors can edit/delete their own comments; owners/admins can moderate deletion. The frontend hides controls according to the current role, while the API independently enforces every permission.
+Roles are ordered `OWNER > ADMIN > MEMBER > VIEWER`. Owners and admins manage projects and members; members can create tasks and update tasks they created or are assigned to; viewers are read-only. Deleting tasks requires admin-level permission. Comment authors can edit/delete their own comments; owners/admins can moderate deletion. Only an OWNER can grant or revoke ADMIN. ADMIN can manage MEMBER and VIEWER roles, but cannot manage OWNERs or other ADMINs. Nobody can change or remove their own membership, and OWNER memberships cannot be changed or removed. The frontend hides controls according to the current role, while the API independently enforces every permission.
+
+### Organization invitations
+
+Organization members are managed from the dashboard for the selected organization. OWNER and ADMIN can invite a registered account directly as MEMBER or VIEWER; only OWNER may invite or promote an ADMIN. An invitee who already has an account is added immediately. An unregistered email receives a seven-day pending invitation and a Celery-delivered registration link at `/register?invite=<token>`. Pending invitations are unique per organization and case-insensitive email.
+
+Registration validates a supplied invitation token against the registering email. Registration without a token and successful login also accept active pending invitations for that email, so an invitee who opens the ordinary registration page or already has an account still joins the organization. Acceptance creates the membership with the invited role and marks the invitation used. Expired, unknown, email-mismatched, and already-used tokens are rejected. The resulting membership appears in that user's organization dropdown; role-based controls are hidden in the UI and remain protected by API authorization.
+
+Member role changes and removals use `PATCH` and `DELETE` on `/api/organizations/{id}/members/{member_id}/`. These operations resolve the member inside the caller's organization, returning 404 for cross-organization IDs. The API schema documents their path IDs, JWT authentication, request body, success responses, and standard error envelope.
 
 Errors use the shared response envelope:
 
