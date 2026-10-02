@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useState } from "react";
 
-import { api } from "@/lib/api";
+import { api, errorMessage } from "@/lib/api";
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
@@ -25,7 +25,7 @@ export default function ForgotPasswordPage() {
         "If an account exists for that email, a password-reset link has been sent.",
       );
     } catch (requestError) {
-      setError((requestError as Error).message);
+      setError(errorMessage(requestError));
     } finally {
       setSubmitting(false);
     }

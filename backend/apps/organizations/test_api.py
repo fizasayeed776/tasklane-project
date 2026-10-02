@@ -123,6 +123,7 @@ def test_invitation_requires_registered_account(org_world):
     )
     assert response.status_code == 400
     assert response.json()["success"] is False
+    assert response.json()["error"]["message"] == "No registered user with that email."
 
 
 def test_members_list_is_limited_to_requested_organization(org_world):

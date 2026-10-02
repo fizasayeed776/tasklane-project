@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { api, setSession } from "@/lib/api";
+import { api, errorMessage, setSession } from "@/lib/api";
 
 export default function Register() {
   const router = useRouter();
@@ -18,10 +18,8 @@ export default function Register() {
       });
       setSession(d.access, d.refresh);
       router.push("/dashboard");
-    } catch (x: any) {
-      setErr(
-        "Could not register. Use a unique email and a password of 8+ characters.",
-      );
+    } catch (x: unknown) {
+      setErr(errorMessage(x));
     }
   }
   return (

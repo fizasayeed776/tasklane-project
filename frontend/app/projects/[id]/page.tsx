@@ -7,6 +7,7 @@ import {
   api,
   canManage,
   canWrite,
+  errorMessage,
   Org,
   OrgMember,
   Project,
@@ -194,7 +195,7 @@ export default function ProjectPage() {
           </label>
           {updateProject.isError && (
             <p role="alert" className="text-sm text-warn">
-              {(updateProject.error as Error).message}
+              {errorMessage(updateProject.error)}
             </p>
           )}
           <div className="flex gap-2">
@@ -213,7 +214,7 @@ export default function ProjectPage() {
       )}
       {archiveProject.isError && (
         <p role="alert" className="text-sm text-warn">
-          {(archiveProject.error as Error).message}
+          {errorMessage(archiveProject.error)}
         </p>
       )}
       <section className="panel space-y-3">
@@ -269,7 +270,7 @@ export default function ProjectPage() {
             </button>
             {invite.isError && (
               <p role="alert" className="w-full text-sm text-warn">
-                {(invite.error as Error).message}
+                {errorMessage(invite.error)}
               </p>
             )}
           </form>
@@ -311,12 +312,17 @@ export default function ProjectPage() {
               ))}
             </select>
             <button className="btn">Add task</button>
+            {create.isError && (
+              <p role="alert" className="text-sm text-warn">
+                {errorMessage(create.error)}
+              </p>
+            )}
           </form>
         )}
       </div>
       {move.isError && (
         <p role="alert" className="text-sm text-warn">
-          Could not move that task: {(move.error as Error).message}. It was put
+          Could not move that task: {errorMessage(move.error)}. It was put
           back.
         </p>
       )}

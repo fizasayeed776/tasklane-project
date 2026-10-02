@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { api, setSession } from "@/lib/api";
+import { api, errorMessage, setSession } from "@/lib/api";
 
 export default function Login() {
   const router = useRouter();
@@ -18,11 +18,12 @@ export default function Login() {
       });
       setSession(d.access, d.refresh);
       router.push("/dashboard");
-    } catch (x: any) {
+    } catch (x: unknown) {
+      const message = errorMessage(x);
       setErr(
-        x.message.includes("credentials")
+        message.includes("credentials")
           ? "Email or password is wrong."
-          : x.message,
+          : message,
       );
     }
   }

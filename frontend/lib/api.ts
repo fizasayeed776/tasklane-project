@@ -7,7 +7,12 @@ export class ApiError extends Error {
     public status: number,
   ) {
     super(message);
+    this.name = "ApiError";
   }
+}
+
+export function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "Request failed.";
 }
 
 export function setSession(access: string, refresh: string) {
@@ -72,14 +77,19 @@ export async function api<T = any>(
     window.location.href = "/login";
   }
   if (res.status === 204) return undefined as T;
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok)
+  const data: unknown = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const error =
+      data && typeof data === "object" && "error" in data
+        ? (data as { error?: { code?: string; message?: string } }).error
+        : undefined;
     throw new ApiError(
-      data?.error?.code ?? "ERROR",
-      data?.error?.message ?? "Request failed",
+      error?.code ?? "ERROR",
+      error?.message ?? "Request failed",
       res.status,
     );
-  return data;
+  }
+  return data as T;
 }
 
 export const STATUSES = ["TODO", "IN_PROGRESS", "REVIEW", "DONE"] as const;

@@ -176,6 +176,43 @@ describe("frontend user flows", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("shows the API's validation message when an invite fails", async () => {
+    mocks.api.mockImplementation(
+      async (endpoint: string, init?: RequestInit & { json?: unknown }) => {
+        if (endpoint === "/api/projects/1/") {
+          return {
+            id: 1,
+            organization: 2,
+            name: "Roadmap",
+            description: "",
+            status: "ACTIVE",
+            created_by: 1,
+          };
+        }
+        if (endpoint === "/api/organizations/") {
+          return [{ id: 2, name: "Acme", role: "OWNER" }];
+        }
+        if (endpoint === "/api/organizations/2/members/") {
+          if (init?.method === "POST")
+            throw new Error("No registered user with that email.");
+          return [];
+        }
+        if (endpoint.startsWith("/api/tasks/?")) return { results: [] };
+        throw new Error(`Unexpected API call: ${endpoint}`);
+      },
+    );
+    renderProjectPage();
+
+    fireEvent.change(await screen.findByPlaceholderText("Member email"), {
+      target: { value: "new@example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Invite member" }));
+
+    expect(
+      await screen.findByRole("alert"),
+    ).toHaveTextContent("No registered user with that email.");
+  });
+
   it("receives scoped notifications in the navbar without polling", async () => {
     vi.stubGlobal("WebSocket", MockWebSocket);
     localStorage.setItem("access", "short-lived-access-token");
