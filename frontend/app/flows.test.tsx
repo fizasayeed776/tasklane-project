@@ -207,6 +207,51 @@ describe("frontend user flows", () => {
     ).not.toBeInTheDocument();
   });
 
+  it.each(["VIEWER", "MEMBER"])(
+    "%s cannot see project administration buttons",
+    async (role) => {
+      mocks.api.mockImplementation(async (endpoint: string) => {
+        if (endpoint === "/api/projects/1/") {
+          return {
+            id: 1,
+            organization: 2,
+            name: "Roadmap",
+            description: "",
+            status: "ACTIVE",
+            created_by: 1,
+          };
+        }
+        if (endpoint === "/api/organizations/") {
+          return [{ id: 2, name: "Acme", role }];
+        }
+        if (endpoint === "/api/organizations/2/members/") return [];
+        if (endpoint.startsWith("/api/tasks/?")) return { results: [] };
+        throw new Error(`Unexpected API call: ${endpoint}`);
+      });
+      renderProjectPage();
+
+      expect(await screen.findByText(role)).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "Edit project" }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "Archive project" }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "Invite member" }),
+      ).not.toBeInTheDocument();
+      if (role === "VIEWER") {
+        expect(
+          screen.queryByRole("button", { name: "Add task" }),
+        ).not.toBeInTheDocument();
+      } else {
+        expect(
+          await screen.findByRole("button", { name: "Add task" }),
+        ).toBeInTheDocument();
+      }
+    },
+  );
+
   it("shows the API's validation message when an organization invite fails", async () => {
     mocks.api.mockImplementation(
       async (endpoint: string, init?: RequestInit & { json?: unknown }) => {
