@@ -13,6 +13,7 @@ class UserSerializer(serializers.ModelSerializer):
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
+    invite = serializers.CharField(write_only=True, required=False)
 
     class Meta:
         model = User
@@ -21,14 +22,12 @@ class RegisterSerializer(serializers.ModelSerializer):
             "email",
             "first_name",
             "password",
+            "invite",
         ]  # explicit: no mass assignment of is_staff etc.
 
     def validate_password(self, value):
         validate_password(value)
         return value
-
-    def create(self, data):
-        return User.objects.create_user(**data)
 
 
 class ChangePasswordSerializer(serializers.Serializer):

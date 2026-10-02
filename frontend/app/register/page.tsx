@@ -1,17 +1,22 @@
 "use client";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { api, errorMessage, setSession } from "@/lib/api";
 
-export default function Register() {
+function RegisterForm() {
   const router = useRouter();
+  const invitation = useSearchParams().get("invite");
   const [f, setF] = useState({ first_name: "", email: "", password: "" }),
     [err, setErr] = useState("");
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     try {
-      await api("/api/auth/register/", { method: "POST", json: f });
+      await api("/api/auth/register/", {
+        method: "POST",
+        json: invitation ? { ...f, invite: invitation } : f,
+      });
       const d = await api("/api/auth/login/", {
         method: "POST",
         json: { email: f.email, password: f.password },
@@ -25,6 +30,12 @@ export default function Register() {
   return (
     <main className="mx-auto mt-24 max-w-sm panel">
       <h1 className="mb-4 text-xl font-semibold">Create your account</h1>
+      {invitation && (
+        <p className="mb-3 text-sm">
+          You’ve been invited to join an organization. Register using the
+          invited email address.
+        </p>
+      )}
       <form onSubmit={submit} className="space-y-3">
         <input
           className="input"
@@ -62,5 +73,19 @@ export default function Register() {
         </Link>
       </p>
     </main>
+  );
+}
+
+export default function Register() {
+  return (
+    <Suspense
+      fallback={
+        <main className="mx-auto mt-24 max-w-sm panel">
+          Loading registration form…
+        </main>
+      }
+    >
+      <RegisterForm />
+    </Suspense>
   );
 }

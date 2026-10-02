@@ -13,6 +13,9 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from drf_spectacular.utils import extend_schema
 
+from apps.organizations.services import accept_pending_invitations
+
+from . import services
 from .models import User
 from .serializers import (
     ChangePasswordSerializer,
@@ -34,9 +37,20 @@ class RegisterView(ThrottledMixin, generics.CreateAPIView):
     permission_classes = [AllowAny]
     authentication_classes: list = []
 
+    def perform_create(self, serializer):
+        serializer.instance = services.register_user(serializer.validated_data)
+
 
 class LoginView(ThrottledMixin, TokenObtainPairView):
-    pass
+    def post(self, request, *args, **kwargs):
+        response = super().post(request, *args, **kwargs)
+        if response.status_code == status.HTTP_200_OK:
+            user = User.objects.filter(
+                email__iexact=request.data.get("email", "")
+            ).first()
+            if user:
+                accept_pending_invitations(user)
+        return response
 
 
 class RefreshView(ThrottledMixin, TokenRefreshView):
