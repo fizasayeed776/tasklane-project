@@ -6,6 +6,7 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from apps.organizations.models import OrganizationMember as M
 from apps.organizations.services import ensure_role, role_of
+from apps.notifications.services import publish_notification
 
 from .jobs import send_assignment_email
 from .models import Activity, Comment, Task
@@ -32,6 +33,15 @@ def create_task(user, data):
     if assignee:
         _log(task, user, "task_assigned", f"assigned task to {assignee.display_name}.")
         transaction.on_commit(lambda: send_assignment_email.delay(task.id))
+        transaction.on_commit(
+            lambda: publish_notification(
+                project.organization_id,
+                "task_assigned",
+                f"You were assigned “{task.title}”.",
+                task.id,
+                assignee.id,
+            )
+        )
     return task
 
 
@@ -50,6 +60,14 @@ def update_task(user, task, data):
     task.save()
     if task.status != old_status:
         _log(task, user, "status_changed", f"changed task status from {old_status} to {task.status}.")
+        transaction.on_commit(
+            lambda: publish_notification(
+                org_id,
+                "status_changed",
+                f"{user.display_name} changed “{task.title}” to {task.status}.",
+                task.id,
+            )
+        )
         if task.status == Task.Status.DONE:
             _log(task, user, "task_completed", f'completed task "{task.title}".')
     if task.priority != old_priority:
@@ -57,6 +75,15 @@ def update_task(user, task, data):
     if task.assigned_to_id and task.assigned_to_id != old_assignee:
         _log(task, user, "task_assigned", f"assigned task to {task.assigned_to.display_name}.")
         transaction.on_commit(lambda: send_assignment_email.delay(task.id))
+        transaction.on_commit(
+            lambda: publish_notification(
+                org_id,
+                "task_assigned",
+                f"You were assigned “{task.title}”.",
+                task.id,
+                task.assigned_to_id,
+            )
+        )
     return task
 
 
@@ -70,6 +97,14 @@ def add_comment(user, task, content):
     ensure_role(user, task.project.organization_id, M.Role.MEMBER)
     comment = Comment.objects.create(task=task, user=user, content=content)
     _log(task, user, "comment_added", f'commented on "{task.title}".')
+    transaction.on_commit(
+        lambda: publish_notification(
+            task.project.organization_id,
+            "comment_added",
+            f"{user.display_name} commented on “{task.title}”.",
+            task.id,
+        )
+    )
     return comment
 
 
