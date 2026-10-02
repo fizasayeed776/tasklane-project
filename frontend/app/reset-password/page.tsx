@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Suspense, FormEvent, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
-import { api } from "@/lib/api";
+import { api, errorMessage } from "@/lib/api";
 
 function ResetPasswordForm() {
   const params = useSearchParams();
@@ -37,7 +37,7 @@ function ResetPasswordForm() {
       });
       setMessage("Your password has been reset. You can now log in.");
     } catch (requestError) {
-      setError((requestError as Error).message);
+      setError(errorMessage(requestError));
     } finally {
       setSubmitting(false);
     }

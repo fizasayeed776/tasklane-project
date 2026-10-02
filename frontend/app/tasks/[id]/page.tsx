@@ -7,6 +7,7 @@ import {
   api,
   canManage,
   canWrite,
+  errorMessage,
   Org,
   OrgMember,
   STATUSES,
@@ -219,7 +220,7 @@ export default function TaskPage() {
           </div>
           {updateTask.isError && (
             <p role="alert" className="text-sm text-warn">
-              {(updateTask.error as Error).message}
+              {errorMessage(updateTask.error)}
             </p>
           )}
           <div className="flex gap-2">
@@ -274,7 +275,7 @@ export default function TaskPage() {
         </form>
         {(add.isError || del.isError) && (
           <p role="alert" className="mt-2 text-sm text-warn">
-            {((add.error || del.error) as Error).message}
+            {errorMessage(add.error || del.error)}
           </p>
         )}
       </section>

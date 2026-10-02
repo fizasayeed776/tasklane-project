@@ -3,7 +3,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { api, canManage, clearSession, Org, setOrganization } from "@/lib/api";
+import {
+  api,
+  canManage,
+  clearSession,
+  errorMessage,
+  Org,
+  setOrganization,
+} from "@/lib/api";
 
 export default function Dashboard() {
   const qc = useQueryClient(),
@@ -113,6 +120,11 @@ export default function Dashboard() {
           required
         />
         <button className="btn">Create organization</button>
+        {createOrg.isError && (
+          <p role="alert" className="text-sm text-warn">
+            {errorMessage(createOrg.error)}
+          </p>
+        )}
       </form>
       <section className="grid grid-cols-2 gap-3 md:grid-cols-5">
         {cards.map(([l, v]) => (
@@ -141,6 +153,11 @@ export default function Dashboard() {
                 required
               />
               <button className="btn">Add project</button>
+              {createProject.isError && (
+                <p role="alert" className="text-sm text-warn">
+                  {errorMessage(createProject.error)}
+                </p>
+              )}
             </form>
           )}
           <ul className="space-y-1">
