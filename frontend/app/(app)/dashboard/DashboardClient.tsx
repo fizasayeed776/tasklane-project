@@ -21,6 +21,12 @@ import AccessibleDialog from "../../components/AccessibleDialog";
 import QueryError from "../../components/QueryError";
 import { useToast } from "../../components/ToastProvider";
 
+type CurrentUser = {
+  email: string;
+  first_name?: string;
+  display_name?: string;
+};
+
 type ProjectTaskPage = {
   count: number;
   next: string | null;
@@ -58,10 +64,10 @@ async function projectTaskSummary(projectId: number) {
 }
 
 function activityGlyph(verb: string) {
-  if (verb.includes("assigned")) return "↗";
-  if (verb.includes("status")) return "↻";
+  if (verb.includes("assigned")) return "Γåù";
+  if (verb.includes("status")) return "Γå╗";
   if (verb.includes("comment")) return "\u201c";
-  return "＋";
+  return "∩╝ï";
 }
 
 export default function Dashboard() {
@@ -132,6 +138,12 @@ export default function Dashboard() {
   }, []);
   const role = orgs.data?.find((o) => String(o.id) === org)?.role;
   const orgName = orgs.data?.find((o) => String(o.id) === org)?.name ?? "";
+  const me = useQuery<CurrentUser>({
+    queryKey: ["me"],
+    queryFn: () => api("/api/auth/me/"),
+  });
+  const displayName =
+    me.data?.display_name || me.data?.first_name || me.data?.email;
   const members = useQuery<OrgMember[]>({
     queryKey: ["members", org],
     queryFn: () => api(`/api/organizations/${org}/members/`),
@@ -320,7 +332,14 @@ export default function Dashboard() {
   ];
   return (
     <main className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:py-8">
-      <h1 className="page-title text-[28px] font-semibold">Dashboard</h1>
+      <div className="space-y-0.5">
+        <h1 className="page-title text-[28px] font-semibold">Dashboard</h1>
+        {displayName && role && (
+          <p className="text-sm text-muted">
+            {displayName} &middot; You are a {roleLabel(role)}
+          </p>
+        )}
+      </div>
       {orgs.data && (orgs.data.length === 0 || (!!org && canManage(role))) && (
         <form
           className="flex flex-wrap gap-2"
@@ -343,7 +362,7 @@ export default function Dashboard() {
             className="btn shrink-0 whitespace-nowrap"
             disabled={createOrg.isPending}
           >
-            {createOrg.isPending ? "Creating…" : "Create organization"}
+            {createOrg.isPending ? "CreatingΓÇª" : "Create organization"}
           </button>
           {createOrg.isError && (
             <p role="alert" className="text-sm text-warn">
@@ -364,7 +383,7 @@ export default function Dashboard() {
             <p
               className={`text-xl font-semibold tabular-nums ${label === "Overdue" && (value ?? 0) > 0 ? "text-danger" : ""}`}
             >
-              {value ?? "–"}
+              {value ?? "ΓÇô"}
             </p>
             <p className="text-xs text-muted">{label}</p>
           </div>
@@ -409,7 +428,7 @@ export default function Dashboard() {
                       {project.status === "ACTIVE" ? "Active" : "Archived"}
                     </span>
                     <span className="text-sm text-muted">
-                      {summary ? summary.count : "–"} tasks
+                      {summary ? summary.count : "ΓÇô"} tasks
                     </span>
                     <span className="text-xs text-muted">
                       {summary?.latestTaskChange
@@ -499,8 +518,7 @@ export default function Dashboard() {
                   (role === "OWNER" ||
                     member.role === "MEMBER" ||
                     member.role === "VIEWER");
-                const canTransfer =
-                  role === "OWNER" && member.role !== "OWNER";
+                const canTransfer = role === "OWNER" && member.role !== "OWNER";
                 return (
                   <li
                     key={member.id}
@@ -628,7 +646,7 @@ export default function Dashboard() {
                     className="btn shrink-0 whitespace-nowrap"
                     disabled={inviteMember.isPending}
                   >
-                    {inviteMember.isPending ? "Inviting…" : "Send invitation"}
+                    {inviteMember.isPending ? "InvitingΓÇª" : "Send invitation"}
                   </button>
                   {inviteMember.isError && (
                     <p role="alert" className="w-full text-sm text-danger">
@@ -650,7 +668,7 @@ export default function Dashboard() {
             </p>
           )}
 
-          {/* Danger zone — leave (non-owners) or delete (owner) */}
+          {/* Danger zone ΓÇö leave (non-owners) or delete (owner) */}
           {org && role && (
             <div className="mt-4 rounded-lg border border-danger/30 p-4">
               <h3 className="text-sm font-semibold text-danger">Danger zone</h3>
@@ -693,7 +711,7 @@ export default function Dashboard() {
         </section>
       )}
 
-      {/* ── New project dialog ─────────────────────────────── */}
+      {/* ΓöÇΓöÇ New project dialog ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */}
       {projectModalOpen && (
         <AccessibleDialog
           labelledBy="new-project-title"
@@ -737,14 +755,14 @@ export default function Dashboard() {
                 Cancel
               </button>
               <button className="btn" disabled={createProject.isPending}>
-                {createProject.isPending ? "Creating…" : "Create project"}
+                {createProject.isPending ? "CreatingΓÇª" : "Create project"}
               </button>
             </div>
           </form>
         </AccessibleDialog>
       )}
 
-      {/* ── Remove member confirmation ─────────────────────── */}
+      {/* ΓöÇΓöÇ Remove member confirmation ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */}
       {memberPendingRemoval && (
         <AccessibleDialog
           labelledBy="remove-member-title"
@@ -772,13 +790,13 @@ export default function Dashboard() {
               disabled={removeMember.isPending}
               onClick={() => removeMember.mutate(memberPendingRemoval.id)}
             >
-              {removeMember.isPending ? "Removing…" : "Remove member"}
+              {removeMember.isPending ? "RemovingΓÇª" : "Remove member"}
             </button>
           </div>
         </AccessibleDialog>
       )}
 
-      {/* ── Transfer ownership confirmation ───────────────── */}
+      {/* ΓöÇΓöÇ Transfer ownership confirmation ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */}
       {transferTarget && (
         <AccessibleDialog
           labelledBy="transfer-ownership-title"
@@ -809,14 +827,14 @@ export default function Dashboard() {
               onClick={() => transferOwnership.mutate(transferTarget.id)}
             >
               {transferOwnership.isPending
-                ? "Transferring…"
+                ? "TransferringΓÇª"
                 : "Transfer ownership"}
             </button>
           </div>
         </AccessibleDialog>
       )}
 
-      {/* ── Leave organization confirmation ───────────────── */}
+      {/* ΓöÇΓöÇ Leave organization confirmation ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */}
       {leaveConfirmOpen && (
         <AccessibleDialog
           labelledBy="leave-org-title"
@@ -845,13 +863,15 @@ export default function Dashboard() {
               disabled={leaveOrganization.isPending}
               onClick={() => leaveOrganization.mutate()}
             >
-              {leaveOrganization.isPending ? "Leaving…" : "Leave organization"}
+              {leaveOrganization.isPending
+                ? "LeavingΓÇª"
+                : "Leave organization"}
             </button>
           </div>
         </AccessibleDialog>
       )}
 
-      {/* ── Delete organization confirmation ──────────────── */}
+      {/* ΓöÇΓöÇ Delete organization confirmation ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */}
       {deleteConfirmOpen && (
         <AccessibleDialog
           labelledBy="delete-org-title"
@@ -906,7 +926,7 @@ export default function Dashboard() {
               onClick={() => deleteOrganization.mutate()}
             >
               {deleteOrganization.isPending
-                ? "Deleting…"
+                ? "DeletingΓÇª"
                 : "Delete organization"}
             </button>
           </div>
