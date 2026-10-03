@@ -386,12 +386,98 @@ def test_assignment_email_and_overdue_jobs(monkeypatch):
     )
 
     email_args = []
+    notifications = []
     monkeypatch.setattr(
         "apps.tasks.jobs.send_mail",
         lambda *args: email_args.append(args),
+    )
+    monkeypatch.setattr(
+        "apps.notifications.services.publish_notification",
+        lambda *args: notifications.append(args),
     )
     send_assignment_email.run(task.id)
     send_assignment_email.run(999999)
     assert len(email_args) == 1
     assert email_args[0][-1] == [assigned.email]
     assert flag_overdue_tasks.run() == 1
+    task.refresh_from_db()
+    assert task.overdue_notified_at is not None
+    assert Activity.objects.filter(task=task, verb="task_overdue").count() == 1
+    assert notifications == [
+        (
+            org.id,
+            "task_overdue",
+            'Task "Email me" is overdue.',
+            task.id,
+            assigned.id,
+        )
+    ]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_overdue_job_flags_tasks_once_and_does_not_duplicate_notifications(
+    monkeypatch,
+):
+    from apps.tasks.jobs import flag_overdue_tasks
+
+    owner = User.objects.create_user("overdue-owner@x.com", "Passw0rd!x")
+    assignee = User.objects.create_user("overdue-assignee@x.com", "Passw0rd!x")
+    org = create_organization(owner, "Overdue")
+    project = Project.objects.create(organization=org, name="Overdue", created_by=owner)
+    task = Task.objects.create(
+        project=project,
+        title="Late task",
+        created_by=owner,
+        assigned_to=assignee,
+        due_date=date.today() - timedelta(days=1),
+    )
+    notifications = []
+    monkeypatch.setattr(
+        "apps.notifications.services.publish_notification",
+        lambda *args: notifications.append(args),
+    )
+
+    assert flag_overdue_tasks.run() == 1
+    task.refresh_from_db()
+    assert task.overdue_notified_at is not None
+    assert Activity.objects.filter(task=task, verb="task_overdue").count() == 1
+    assert len(notifications) == 1
+
+    assert flag_overdue_tasks.run() == 0
+    assert Activity.objects.filter(task=task, verb="task_overdue").count() == 1
+    assert len(notifications) == 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_overdue_job_ignores_done_and_future_tasks(monkeypatch):
+    from apps.tasks.jobs import flag_overdue_tasks
+
+    owner = User.objects.create_user("ignore-owner@x.com", "Passw0rd!x")
+    org = create_organization(owner, "Ignore")
+    project = Project.objects.create(organization=org, name="Ignore", created_by=owner)
+    done_task = Task.objects.create(
+        project=project,
+        title="Done task",
+        created_by=owner,
+        status=Task.Status.DONE,
+        due_date=date.today() - timedelta(days=1),
+    )
+    future_task = Task.objects.create(
+        project=project,
+        title="Future task",
+        created_by=owner,
+        due_date=date.today() + timedelta(days=1),
+    )
+    notifications = []
+    monkeypatch.setattr(
+        "apps.notifications.services.publish_notification",
+        lambda *args: notifications.append(args),
+    )
+
+    assert flag_overdue_tasks.run() == 0
+    done_task.refresh_from_db()
+    future_task.refresh_from_db()
+    assert done_task.overdue_notified_at is None
+    assert future_task.overdue_notified_at is None
+    assert not Activity.objects.filter(verb="task_overdue").exists()
+    assert notifications == []
