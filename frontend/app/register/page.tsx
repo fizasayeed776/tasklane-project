@@ -1,39 +1,25 @@
-"use client";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
-import { api, errorMessage, setSession } from "@/lib/api";
 import AuthCard from "../components/AuthCard";
-import PasswordField from "../components/PasswordField";
+import RegisterForm from "./RegisterForm";
 
-function RegisterForm() {
-  const router = useRouter();
-  const invitation = useSearchParams().get("invite");
-  const [f, setF] = useState({ first_name: "", email: "", password: "" }),
-    [err, setErr] = useState(""),
-    [submitting, setSubmitting] = useState(false);
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setErr("");
-    setSubmitting(true);
-    try {
-      await api("/api/auth/register/", {
-        method: "POST",
-        json: invitation ? { ...f, invite: invitation } : f,
-      });
-      const d = await api("/api/auth/login/", {
-        method: "POST",
-        json: { email: f.email, password: f.password },
-      });
-      setSession(d.access, d.refresh);
-      router.push("/dashboard");
-    } catch (x: unknown) {
-      setErr(errorMessage(x));
-    } finally {
-      setSubmitting(false);
-    }
-  }
+export const metadata: Metadata = {
+  title: "Register | Tasklane",
+};
+
+type RegisterPageProps = {
+  searchParams: Promise<{ invite?: string | string[] }>;
+};
+
+export default async function RegisterPage({
+  searchParams,
+}: RegisterPageProps) {
+  const search = await searchParams;
+  const invitation = Array.isArray(search.invite)
+    ? search.invite[0]
+    : search.invite;
+
   return (
     <AuthCard
       title="Create your account"
@@ -45,46 +31,15 @@ function RegisterForm() {
           invited email address.
         </p>
       )}
-      <form onSubmit={submit} className="space-y-3">
-        <label className="block space-y-1 text-sm">
-          <span>Name</span>
-          <input
-            className="input"
-            placeholder="Name"
-            autoComplete="name"
-            value={f.first_name}
-            onChange={(e) => setF({ ...f, first_name: e.target.value })}
-          />
-        </label>
-        <label className="block space-y-1 text-sm">
-          <span>Email</span>
-          <input
-            className="input"
-            type="email"
-            placeholder="Email"
-            autoComplete="email"
-            value={f.email}
-            onChange={(e) => setF({ ...f, email: e.target.value })}
-            required
-          />
-        </label>
-        <PasswordField
-          id="register-password"
-          label="Password"
-          autoComplete="new-password"
-          minLength={8}
-          value={f.password}
-          onChange={(password) => setF({ ...f, password })}
-        />
-        {err && (
-          <p role="alert" className="text-sm text-warn">
-            {err}
+      <Suspense
+        fallback={
+          <p role="status" className="text-sm text-muted">
+            Loading registration form…
           </p>
-        )}
-        <button className="btn w-full" disabled={submitting}>
-          {submitting ? "Creating account…" : "Create account"}
-        </button>
-      </form>
+        }
+      >
+        <RegisterForm invitation={invitation} />
+      </Suspense>
       <p className="text-sm">
         Have an account?{" "}
         <Link
@@ -95,21 +50,5 @@ function RegisterForm() {
         </Link>
       </p>
     </AuthCard>
-  );
-}
-
-export default function Register() {
-  return (
-    <Suspense
-      fallback={
-        <main className="grid min-h-[calc(100vh-2rem)] place-items-center px-4 py-12">
-          <section className="panel w-full max-w-md">
-            Loading registration form…
-          </section>
-        </main>
-      }
-    >
-      <RegisterForm />
-    </Suspense>
   );
 }
