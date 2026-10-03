@@ -603,3 +603,350 @@ def test_openapi_documents_member_mutation_security_and_error_responses():
         and parameter["schema"]["type"] == "integer"
         for parameter in patch["parameters"]
     )
+
+
+# ─── Transfer ownership ───────────────────────────────────────────────────────
+
+
+def test_transfer_ownership_succeeds_and_swaps_roles(org_world):
+    admin = User.objects.create_user("admin@example.com", "StrongPass!234")
+    membership = OrganizationMember.objects.create(
+        organization=org_world["org"], user=admin, role=OrganizationMember.Role.ADMIN
+    )
+    org = org_world["org"]
+
+    response = client_for(org_world["owner"]).post(
+        f"/api/organizations/{org.id}/transfer-ownership/",
+        {"member_id": membership.id},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    # New owner is the former admin
+    org.refresh_from_db()
+    assert org.owner_id == admin.id
+    membership.refresh_from_db()
+    assert membership.role == OrganizationMember.Role.OWNER
+    # Former owner demoted to ADMIN
+    old_owner_membership = OrganizationMember.objects.get(
+        organization=org, user=org_world["owner"]
+    )
+    assert old_owner_membership.role == OrganizationMember.Role.ADMIN
+
+
+def test_transfer_ownership_writes_activity_entry(org_world):
+    from apps.tasks.models import Activity
+
+    member = User.objects.create_user("member@example.com", "StrongPass!234")
+    membership = OrganizationMember.objects.create(
+        organization=org_world["org"],
+        user=member,
+        role=OrganizationMember.Role.MEMBER,
+    )
+    client_for(org_world["owner"]).post(
+        f"/api/organizations/{org_world['org'].id}/transfer-ownership/",
+        {"member_id": membership.id},
+        format="json",
+    )
+    entry = Activity.objects.filter(
+        organization=org_world["org"], verb="ownership_transferred"
+    ).first()
+    assert entry is not None
+    assert member.display_name in entry.message
+    assert org_world["owner"].display_name in entry.message
+
+
+def test_transfer_ownership_org_always_has_exactly_one_owner(org_world):
+    member = User.objects.create_user("member@example.com", "StrongPass!234")
+    membership = OrganizationMember.objects.create(
+        organization=org_world["org"],
+        user=member,
+        role=OrganizationMember.Role.MEMBER,
+    )
+    client_for(org_world["owner"]).post(
+        f"/api/organizations/{org_world['org'].id}/transfer-ownership/",
+        {"member_id": membership.id},
+        format="json",
+    )
+    owner_count = OrganizationMember.objects.filter(
+        organization=org_world["org"], role=OrganizationMember.Role.OWNER
+    ).count()
+    assert owner_count == 1
+
+
+@pytest.mark.parametrize("role", ["ADMIN", "MEMBER", "VIEWER"])
+def test_non_owner_cannot_transfer_ownership(org_world, role):
+    actor = User.objects.create_user(f"{role.lower()}@example.com", "StrongPass!234")
+    target = User.objects.create_user("target@example.com", "StrongPass!234")
+    OrganizationMember.objects.create(
+        organization=org_world["org"], user=actor, role=role
+    )
+    target_membership = OrganizationMember.objects.create(
+        organization=org_world["org"],
+        user=target,
+        role=OrganizationMember.Role.MEMBER,
+    )
+
+    response = client_for(actor).post(
+        f"/api/organizations/{org_world['org'].id}/transfer-ownership/",
+        {"member_id": target_membership.id},
+        format="json",
+    )
+    assert response.status_code == 403
+    assert response.json()["success"] is False
+    # Org owner unchanged
+    org_world["org"].refresh_from_db()
+    assert org_world["org"].owner_id == org_world["owner"].id
+
+
+def test_transfer_ownership_to_cross_organization_member_returns_404(org_world):
+    outsider_membership = OrganizationMember.objects.get(
+        organization=org_world["other_org"], user=org_world["outsider"]
+    )
+    response = client_for(org_world["owner"]).post(
+        f"/api/organizations/{org_world['org'].id}/transfer-ownership/",
+        {"member_id": outsider_membership.id},
+        format="json",
+    )
+    assert response.status_code == 404
+    assert response.json()["success"] is False
+
+
+def test_transfer_ownership_to_self_returns_400(org_world):
+    owner_membership = OrganizationMember.objects.get(
+        organization=org_world["org"], user=org_world["owner"]
+    )
+    response = client_for(org_world["owner"]).post(
+        f"/api/organizations/{org_world['org'].id}/transfer-ownership/",
+        {"member_id": owner_membership.id},
+        format="json",
+    )
+    assert response.status_code == 400
+    assert response.json()["success"] is False
+
+
+def test_transfer_ownership_nonmember_gets_404(org_world):
+    response = client_for(org_world["outsider"]).post(
+        f"/api/organizations/{org_world['org'].id}/transfer-ownership/",
+        {"member_id": 1},
+        format="json",
+    )
+    assert response.status_code == 404
+    assert response.json()["success"] is False
+
+
+# ─── Leave organization ───────────────────────────────────────────────────────
+
+
+def test_member_can_leave_organization(org_world):
+    member = User.objects.create_user("member@example.com", "StrongPass!234")
+    OrganizationMember.objects.create(
+        organization=org_world["org"], user=member, role=OrganizationMember.Role.MEMBER
+    )
+    response = client_for(member).post(
+        f"/api/organizations/{org_world['org'].id}/leave/",
+        format="json",
+    )
+    assert response.status_code == 204
+    assert not OrganizationMember.objects.filter(
+        organization=org_world["org"], user=member
+    ).exists()
+
+
+def test_viewer_can_leave_organization(org_world):
+    viewer = User.objects.create_user("viewer@example.com", "StrongPass!234")
+    OrganizationMember.objects.create(
+        organization=org_world["org"], user=viewer, role=OrganizationMember.Role.VIEWER
+    )
+    response = client_for(viewer).post(
+        f"/api/organizations/{org_world['org'].id}/leave/",
+    )
+    assert response.status_code == 204
+
+
+def test_admin_can_leave_organization(org_world):
+    admin = User.objects.create_user("admin@example.com", "StrongPass!234")
+    OrganizationMember.objects.create(
+        organization=org_world["org"], user=admin, role=OrganizationMember.Role.ADMIN
+    )
+    response = client_for(admin).post(
+        f"/api/organizations/{org_world['org'].id}/leave/",
+    )
+    assert response.status_code == 204
+
+
+def test_owner_cannot_leave_organization(org_world):
+    response = client_for(org_world["owner"]).post(
+        f"/api/organizations/{org_world['org'].id}/leave/",
+    )
+    assert response.status_code == 400
+    assert response.json()["success"] is False
+    assert "transfer ownership" in response.json()["error"]["message"].lower()
+    # Owner membership still exists
+    assert OrganizationMember.objects.filter(
+        organization=org_world["org"], user=org_world["owner"]
+    ).exists()
+
+
+def test_leave_unassigns_tasks_in_organization(org_world):
+    from apps.tasks.models import Task
+
+    member = User.objects.create_user("member@example.com", "StrongPass!234")
+    OrganizationMember.objects.create(
+        organization=org_world["org"], user=member, role=OrganizationMember.Role.MEMBER
+    )
+    project = Project.objects.create(
+        organization=org_world["org"], name="P", created_by=org_world["owner"]
+    )
+    task = Task.objects.create(
+        project=project,
+        title="My task",
+        created_by=org_world["owner"],
+        assigned_to=member,
+    )
+    # Task in a different org should be unaffected
+    other_task = Task.objects.create(
+        project=Project.objects.create(
+            organization=org_world["other_org"],
+            name="Other",
+            created_by=org_world["outsider"],
+        ),
+        title="Other task",
+        created_by=org_world["outsider"],
+        assigned_to=None,
+    )
+
+    client_for(member).post(f"/api/organizations/{org_world['org'].id}/leave/")
+
+    task.refresh_from_db()
+    assert task.assigned_to is None
+    other_task.refresh_from_db()
+    assert other_task.assigned_to is None  # was already None
+
+
+def test_leave_nonmember_org_returns_404(org_world):
+    response = client_for(org_world["outsider"]).post(
+        f"/api/organizations/{org_world['org'].id}/leave/",
+    )
+    assert response.status_code == 404
+
+
+def test_org_always_has_one_owner_after_leave(org_world):
+    member = User.objects.create_user("member@example.com", "StrongPass!234")
+    OrganizationMember.objects.create(
+        organization=org_world["org"], user=member, role=OrganizationMember.Role.MEMBER
+    )
+    client_for(member).post(f"/api/organizations/{org_world['org'].id}/leave/")
+    owner_count = OrganizationMember.objects.filter(
+        organization=org_world["org"], role=OrganizationMember.Role.OWNER
+    ).count()
+    assert owner_count == 1
+
+
+# ─── Delete organization ──────────────────────────────────────────────────────
+
+
+def test_owner_can_delete_organization_with_correct_name(org_world):
+    org_id = org_world["org"].id
+    response = client_for(org_world["owner"]).delete(
+        f"/api/organizations/{org_id}/",
+        {"name": org_world["org"].name},
+        format="json",
+    )
+    assert response.status_code == 204
+    from apps.organizations.models import Organization
+
+    assert not Organization.objects.filter(pk=org_id).exists()
+
+
+def test_delete_organization_cascades_all_data(org_world):
+    from apps.tasks.models import Activity, Comment, Task
+
+    project = Project.objects.create(
+        organization=org_world["org"], name="P", created_by=org_world["owner"]
+    )
+    task = Task.objects.create(
+        project=project, title="T", created_by=org_world["owner"]
+    )
+    comment = Comment.objects.create(task=task, user=org_world["owner"], content="C")
+    activity = Activity.objects.create(
+        organization=org_world["org"],
+        task=task,
+        actor=org_world["owner"],
+        verb="task_created",
+        message="created task",
+    )
+    pending = PendingInvitation.objects.create(
+        organization=org_world["org"],
+        email="pending@example.com",
+        role=OrganizationMember.Role.MEMBER,
+        invited_by=org_world["owner"],
+    )
+
+    client_for(org_world["owner"]).delete(
+        f"/api/organizations/{org_world['org'].id}/",
+        {"name": org_world["org"].name},
+        format="json",
+    )
+
+    assert not Project.objects.filter(pk=project.id).exists()
+    assert not Task.objects.filter(pk=task.id).exists()
+    assert not Comment.objects.filter(pk=comment.id).exists()
+    assert not Activity.objects.filter(pk=activity.id).exists()
+    assert not PendingInvitation.objects.filter(pk=pending.id).exists()
+    assert not OrganizationMember.objects.filter(
+        organization_id=org_world["org"].id
+    ).exists()
+
+
+def test_delete_organization_wrong_name_returns_400(org_world):
+    response = client_for(org_world["owner"]).delete(
+        f"/api/organizations/{org_world['org'].id}/",
+        {"name": "Wrong Name"},
+        format="json",
+    )
+    assert response.status_code == 400
+    assert response.json()["success"] is False
+    assert "does not match" in response.json()["error"]["message"]
+    # Org still exists
+    from apps.organizations.models import Organization
+
+    assert Organization.objects.filter(pk=org_world["org"].id).exists()
+
+
+@pytest.mark.parametrize("role", ["ADMIN", "MEMBER", "VIEWER"])
+def test_non_owner_cannot_delete_organization(org_world, role):
+    actor = User.objects.create_user(f"{role.lower()}@example.com", "StrongPass!234")
+    OrganizationMember.objects.create(
+        organization=org_world["org"], user=actor, role=role
+    )
+    response = client_for(actor).delete(
+        f"/api/organizations/{org_world['org'].id}/",
+        {"name": org_world["org"].name},
+        format="json",
+    )
+    assert response.status_code == 403
+    assert response.json()["success"] is False
+    from apps.organizations.models import Organization
+
+    assert Organization.objects.filter(pk=org_world["org"].id).exists()
+
+
+def test_delete_organization_nonmember_returns_404(org_world):
+    response = client_for(org_world["outsider"]).delete(
+        f"/api/organizations/{org_world['org'].id}/",
+        {"name": org_world["org"].name},
+        format="json",
+    )
+    assert response.status_code == 404
+    assert response.json()["success"] is False
+
+
+def test_delete_organization_missing_name_field_returns_400(org_world):
+    response = client_for(org_world["owner"]).delete(
+        f"/api/organizations/{org_world['org'].id}/",
+        {},
+        format="json",
+    )
+    assert response.status_code == 400
+    assert response.json()["success"] is False
