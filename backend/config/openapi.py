@@ -1,6 +1,6 @@
 def add_error_responses(result, generator, request, public):
     schemas = result.setdefault("components", {}).setdefault("schemas", {})
-    schemas["ApiError"] = {
+    schemas["ApiErrorDetail"] = {
         "type": "object",
         "required": ["code", "message"],
         "properties": {
@@ -9,19 +9,17 @@ def add_error_responses(result, generator, request, public):
             "details": {},
         },
     }
-    schemas["ApiErrorEnvelope"] = {
+    schemas["ApiError"] = {
         "type": "object",
         "required": ["success", "error"],
         "properties": {
             "success": {"type": "boolean", "enum": [False]},
-            "error": {"$ref": "#/components/schemas/ApiError"},
+            "error": {"$ref": "#/components/schemas/ApiErrorDetail"},
         },
     }
     error_response = {
         "content": {
-            "application/json": {
-                "schema": {"$ref": "#/components/schemas/ApiErrorEnvelope"}
-            }
+            "application/json": {"schema": {"$ref": "#/components/schemas/ApiError"}}
         }
     }
     descriptions = {
@@ -29,6 +27,7 @@ def add_error_responses(result, generator, request, public):
         "401": "Authentication required or credentials are invalid.",
         "403": "The caller does not have permission for this action.",
         "404": "The resource does not exist or is outside the caller's organization.",
+        "405": "The HTTP method is not allowed for this endpoint.",
         "429": "The request was throttled.",
         "500": "Unexpected server error; stack traces are not returned.",
     }
@@ -66,7 +65,7 @@ def add_error_responses(result, generator, request, public):
                             "schema": {"type": "string"},
                         }
                     )
-            error_codes = {"500"}
+            error_codes = {"405", "500"}
             if method in {"post", "put", "patch"} or (
                 method == "get"
                 and path in {"/api/projects/", "/api/tasks/", "/api/organizations/"}
