@@ -5,10 +5,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   api: vi.fn(),
   push: vi.fn(),
+  replace: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: mocks.push }),
+  useRouter: () => ({ push: mocks.push, replace: mocks.replace }),
+  usePathname: () => window.location.pathname,
+  useSearchParams: () => new URLSearchParams(window.location.search),
   useParams: () => ({ id: "1" }),
 }));
 
@@ -92,10 +95,51 @@ function renderTaskPage() {
   );
 }
 
+function mockProjectPageApi(tasks: unknown[] = []) {
+  mocks.api.mockImplementation(
+    async (endpoint: string, init?: RequestInit & { json?: unknown }) => {
+      if (endpoint === "/api/projects/1/") {
+        return {
+          id: 1,
+          organization: 2,
+          name: "Roadmap",
+          description: "",
+          status: "ACTIVE",
+          created_by: 1,
+        };
+      }
+      if (endpoint === "/api/organizations/") {
+        return [{ id: 2, name: "Acme", role: "MEMBER" }];
+      }
+      if (endpoint === "/api/organizations/2/members/") {
+        return [
+          {
+            id: 3,
+            user_id: 5,
+            email: "member@example.com",
+            name: "Member",
+            role: "MEMBER",
+          },
+        ];
+      }
+      if (endpoint.startsWith("/api/tasks/?")) return { results: tasks };
+      if (endpoint.startsWith("/api/tasks/") && init?.method === "PATCH") {
+        return {};
+      }
+      throw new Error(`Unexpected API call: ${endpoint}`);
+    },
+  );
+}
+
 describe("frontend user flows", () => {
   beforeEach(() => {
     mocks.api.mockReset();
     mocks.push.mockReset();
+    mocks.replace.mockReset();
+    mocks.replace.mockImplementation((url: string) =>
+      window.history.replaceState({}, "", url),
+    );
+    window.history.replaceState({}, "", "/projects/1");
     MockWebSocket.instances = [];
     localStorage.clear();
   });
@@ -317,6 +361,115 @@ describe("frontend user flows", () => {
     });
     await waitFor(() =>
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+  });
+
+  it("builds task API URLs from the selected filters", async () => {
+    mockProjectPageApi();
+    renderProjectPage();
+
+    await screen.findByRole("heading", { name: "Roadmap" });
+    fireEvent.change(screen.getByLabelText("Filter by status"), {
+      target: { value: "IN_PROGRESS" },
+    });
+    fireEvent.change(screen.getByLabelText("Filter by priority"), {
+      target: { value: "HIGH" },
+    });
+    fireEvent.change(screen.getByLabelText("Filter by assignee"), {
+      target: { value: "5" },
+    });
+
+    await waitFor(() =>
+      expect(mocks.api).toHaveBeenCalledWith(
+        "/api/tasks/?project=1&status=IN_PROGRESS&priority=HIGH&assigned_to=5",
+      ),
+    );
+    expect(window.location.search).toBe(
+      "?status=IN_PROGRESS&priority=HIGH&assigned_to=5",
+    );
+  });
+
+  it("applies combined filters from the URL when loading the board", async () => {
+    window.history.replaceState(
+      {},
+      "",
+      "/projects/1?search=launch&status=TODO&priority=HIGH&assigned_to=5",
+    );
+    mockProjectPageApi();
+    renderProjectPage();
+
+    expect(await screen.findByLabelText("Search tasks")).toHaveValue("launch");
+    expect(screen.getByLabelText("Filter by status")).toHaveValue("TODO");
+    expect(screen.getByLabelText("Filter by priority")).toHaveValue("HIGH");
+    await screen.findByRole("option", { name: "Member" });
+    expect(screen.getByLabelText("Filter by assignee")).toHaveValue("5");
+    await waitFor(() =>
+      expect(mocks.api).toHaveBeenCalledWith(
+        "/api/tasks/?project=1&search=launch&status=TODO&priority=HIGH&assigned_to=5",
+      ),
+    );
+  });
+
+  it("clears all filters from the controls and URL", async () => {
+    window.history.replaceState(
+      {},
+      "",
+      "/projects/1?search=launch&status=TODO&priority=HIGH&assigned_to=5",
+    );
+    mockProjectPageApi();
+    renderProjectPage();
+
+    await screen.findByLabelText("Search tasks");
+    fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+
+    expect(window.location.pathname + window.location.search).toBe(
+      "/projects/1",
+    );
+    expect(screen.getByLabelText("Search tasks")).toHaveValue("");
+    expect(screen.getByLabelText("Filter by status")).toHaveValue("");
+    expect(screen.getByLabelText("Filter by priority")).toHaveValue("");
+    expect(screen.getByLabelText("Filter by assignee")).toHaveValue("");
+    await waitFor(() =>
+      expect(mocks.api).toHaveBeenCalledWith("/api/tasks/?project=1"),
+    );
+  });
+
+  it("sends a PATCH when dragging a task to another Kanban column", async () => {
+    const task = {
+      id: 10,
+      project: 1,
+      organization: 2,
+      title: "Prepare launch plan",
+      description: "",
+      status: "TODO",
+      priority: "HIGH",
+      assigned_to: null,
+      assigned_to_name: null,
+      created_by: 5,
+      created_by_name: "Avery",
+      due_date: null,
+    };
+    mockProjectPageApi([task]);
+    renderProjectPage();
+
+    const card = (await screen.findByText("Prepare launch plan")).closest(
+      "article",
+    );
+    expect(card).not.toBeNull();
+    const dataTransfer = {
+      setData: vi.fn(),
+      getData: vi.fn(() => "10"),
+    };
+    fireEvent.dragStart(card!, { dataTransfer });
+    fireEvent.drop(screen.getByLabelText("In progress tasks"), {
+      dataTransfer,
+    });
+
+    await waitFor(() =>
+      expect(mocks.api).toHaveBeenCalledWith("/api/tasks/10/", {
+        method: "PATCH",
+        json: { status: "IN_PROGRESS" },
+      }),
     );
   });
 
