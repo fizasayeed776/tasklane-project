@@ -362,7 +362,7 @@ export default function Dashboard() {
             className="btn shrink-0 whitespace-nowrap"
             disabled={createOrg.isPending}
           >
-            {createOrg.isPending ? "CreatingΓÇª" : "Create organization"}
+            {createOrg.isPending ? "Creating…" : "Create organization"}
           </button>
           {createOrg.isError && (
             <p role="alert" className="text-sm text-warn">
@@ -383,7 +383,7 @@ export default function Dashboard() {
             <p
               className={`text-xl font-semibold tabular-nums ${label === "Overdue" && (value ?? 0) > 0 ? "text-danger" : ""}`}
             >
-              {value ?? "ΓÇô"}
+              {value ?? "–"}
             </p>
             <p className="text-xs text-muted">{label}</p>
           </div>
@@ -428,7 +428,7 @@ export default function Dashboard() {
                       {project.status === "ACTIVE" ? "Active" : "Archived"}
                     </span>
                     <span className="text-sm text-muted">
-                      {summary ? summary.count : "ΓÇô"} tasks
+                      {summary ? summary.count : "–"} tasks
                     </span>
                     <span className="text-xs text-muted">
                       {summary?.latestTaskChange
@@ -646,7 +646,7 @@ export default function Dashboard() {
                     className="btn shrink-0 whitespace-nowrap"
                     disabled={inviteMember.isPending}
                   >
-                    {inviteMember.isPending ? "InvitingΓÇª" : "Send invitation"}
+                    {inviteMember.isPending ? "Inviting…" : "Send invitation"}
                   </button>
                   {inviteMember.isError && (
                     <p role="alert" className="w-full text-sm text-danger">
@@ -668,7 +668,7 @@ export default function Dashboard() {
             </p>
           )}
 
-          {/* Danger zone ΓÇö leave (non-owners) or delete (owner) */}
+          {/* Danger zone — leave (non-owners) or delete (owner) */}
           {org && role && (
             <div className="mt-4 rounded-lg border border-danger/30 p-4">
               <h3 className="text-sm font-semibold text-danger">Danger zone</h3>
@@ -755,7 +755,7 @@ export default function Dashboard() {
                 Cancel
               </button>
               <button className="btn" disabled={createProject.isPending}>
-                {createProject.isPending ? "CreatingΓÇª" : "Create project"}
+                {createProject.isPending ? "Creating…" : "Create project"}
               </button>
             </div>
           </form>
@@ -790,7 +790,7 @@ export default function Dashboard() {
               disabled={removeMember.isPending}
               onClick={() => removeMember.mutate(memberPendingRemoval.id)}
             >
-              {removeMember.isPending ? "RemovingΓÇª" : "Remove member"}
+              {removeMember.isPending ? "Removing…" : "Remove member"}
             </button>
           </div>
         </AccessibleDialog>
@@ -827,7 +827,7 @@ export default function Dashboard() {
               onClick={() => transferOwnership.mutate(transferTarget.id)}
             >
               {transferOwnership.isPending
-                ? "TransferringΓÇª"
+                ? "Transferring…"
                 : "Transfer ownership"}
             </button>
           </div>
@@ -864,7 +864,7 @@ export default function Dashboard() {
               onClick={() => leaveOrganization.mutate()}
             >
               {leaveOrganization.isPending
-                ? "LeavingΓÇª"
+                ? "Leaving…"
                 : "Leave organization"}
             </button>
           </div>
@@ -926,7 +926,7 @@ export default function Dashboard() {
               onClick={() => deleteOrganization.mutate()}
             >
               {deleteOrganization.isPending
-                ? "DeletingΓÇª"
+                ? "Deleting…"
                 : "Delete organization"}
             </button>
           </div>
