@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { refreshSession } from "@/lib/api";
+import { relativeTime } from "@/lib/format";
 
 type Notification = {
   id: string;
@@ -31,6 +32,7 @@ export default function NotificationsNavbar() {
     organization: "",
   });
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [readIds, setReadIds] = useState<Set<string>>(() => new Set());
   const [open, setOpen] = useState(false);
   const [connectionError, setConnectionError] = useState(false);
 
@@ -49,6 +51,7 @@ export default function NotificationsNavbar() {
 
   useEffect(() => {
     setNotifications([]);
+    setReadIds(new Set());
     setConnectionError(false);
     if (!session.access || !session.organization) return;
 
@@ -112,39 +115,90 @@ export default function NotificationsNavbar() {
 
   if (!session.access) return null;
 
+  const unreadCount = notifications.filter(
+    (notification) => !readIds.has(notification.id),
+  ).length;
+
   return (
-    <nav className="flex items-center justify-end border-b border-line bg-white px-6 py-2">
+    <div className="relative flex items-center">
       {session.organization && (
         <button
           type="button"
-          className="rounded-md px-3 py-1.5 text-sm hover:bg-line/50"
+          className="relative grid size-10 place-items-center rounded-md text-sm hover:bg-accent-soft"
           aria-expanded={open}
-          aria-label={`Notifications${notifications.length ? ` (${notifications.length})` : ""}${connectionError ? " disconnected" : ""}`}
+          aria-controls="recent-notifications"
+          aria-label={`Notifications${unreadCount ? ` (${unreadCount} unread)` : ""}${connectionError ? " disconnected" : ""}`}
           onClick={() => setOpen((value) => !value)}
         >
-          Notifications
-          {notifications.length > 0 ? ` (${notifications.length})` : ""}
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 24 24"
+            className="size-5"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+          >
+            <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
+            <path d="M10 21h4" />
+          </svg>
+          {notifications.length > 0 && (
+            <span className="absolute right-1 top-1 grid min-h-4 min-w-4 place-items-center rounded-full bg-danger px-1 text-[10px] font-semibold text-white">
+              {notifications.length > 9 ? "9+" : notifications.length}
+            </span>
+          )}
         </button>
       )}
       {open && (
-        <section className="absolute right-4 top-12 z-10 max-h-96 w-80 overflow-y-auto rounded-lg border border-line bg-white p-3 shadow-lg">
+        <section
+          id="recent-notifications"
+          className="absolute right-0 top-12 z-40 max-h-96 w-80 overflow-y-auto rounded-lg border border-line bg-surface p-3"
+        >
           <h2 className="mb-2 font-semibold">Recent notifications</h2>
           {notifications.length === 0 ? (
-            <p className="text-sm text-ink/70">No new notifications.</p>
+            <p className="py-4 text-sm text-muted">
+              You’re all caught up. New activity will appear here.
+            </p>
           ) : (
             <ul className="space-y-2 text-sm">
               {notifications.map((notification) => (
                 <li
                   key={notification.id}
-                  className="border-b border-line pb-2 last:border-0"
+                  className={`flex items-start gap-2 rounded-md border-b border-line p-2 last:border-0 ${readIds.has(notification.id) ? "" : "bg-accent-soft/50"}`}
                 >
-                  <Link
-                    className="underline"
-                    href={`/tasks/${notification.task_id}`}
-                    onClick={() => setOpen(false)}
-                  >
-                    {notification.message}
-                  </Link>
+                  <div className="min-w-0 flex-1">
+                    <Link
+                      className="underline underline-offset-2"
+                      href={`/tasks/${notification.task_id}`}
+                      onClick={() => {
+                        setReadIds((current) =>
+                          new Set(current).add(notification.id),
+                        );
+                        setOpen(false);
+                      }}
+                    >
+                      {notification.message}
+                    </Link>
+                    <time
+                      className="mt-1 block text-xs text-muted"
+                      dateTime={notification.created_at}
+                    >
+                      {relativeTime(notification.created_at)}
+                    </time>
+                  </div>
+                  {!readIds.has(notification.id) && (
+                    <button
+                      type="button"
+                      className="min-h-10 shrink-0 rounded-md px-2 text-xs underline underline-offset-2"
+                      aria-label={`Mark notification as read: ${notification.message}`}
+                      onClick={() =>
+                        setReadIds((current) =>
+                          new Set(current).add(notification.id),
+                        )
+                      }
+                    >
+                      Mark read
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>
@@ -156,6 +210,6 @@ export default function NotificationsNavbar() {
           )}
         </section>
       )}
-    </nav>
+    </div>
   );
 }
