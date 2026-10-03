@@ -240,9 +240,7 @@ def leave_organization(actor, org):
     The OWNER cannot leave — they must transfer ownership first.
     Unassigns the user's tasks within the organization.
     """
-    membership = OrganizationMember.objects.filter(
-        organization=org, user=actor
-    ).first()
+    membership = OrganizationMember.objects.filter(organization=org, user=actor).first()
     if membership is None:
         raise PermissionDenied("You are not a member of this organization.")
     if membership.role == R.OWNER:
@@ -258,9 +256,9 @@ def leave_organization(actor, org):
     # Unassign tasks this user owns in this organization
     from apps.tasks.models import Task
 
-    Task.objects.filter(
-        project__organization=org, assigned_to=actor
-    ).update(assigned_to=None)
+    Task.objects.filter(project__organization=org, assigned_to=actor).update(
+        assigned_to=None
+    )
 
     membership.delete()
 
@@ -273,13 +271,15 @@ def delete_organization(actor, org, name_confirmation):
     Cascades: projects, tasks, comments, activity, pending invitations.
     """
     if role_of(actor, org.id) != R.OWNER:
-        raise PermissionDenied("Only the organization owner can delete the organization.")
+        raise PermissionDenied(
+            "Only the organization owner can delete the organization."
+        )
 
     if name_confirmation.strip() != org.name:
         raise ValidationError(
             {
                 "name": (
-                    f"The name you entered does not match \"{org.name}\". "
+                    f'The name you entered does not match "{org.name}". '
                     "Type the exact organization name to confirm deletion."
                 )
             }
