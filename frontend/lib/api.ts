@@ -107,6 +107,9 @@ export type Task = {
   created_by: number;
   created_by_name: string;
   due_date: string | null;
+  created_at?: string;
+  updated_at?: string;
+  comment_count?: number;
 };
 export type Org = {
   id: number;

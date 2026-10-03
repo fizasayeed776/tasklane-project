@@ -169,7 +169,7 @@ describe("frontend user flows", () => {
     await waitFor(() => expect(localStorage.getItem("org")).toBe("3"));
   });
 
-  it("creates a task in the current project", async () => {
+  it("creates a task from the new-task modal", async () => {
     mocks.api.mockImplementation(
       async (endpoint: string, init?: RequestInit & { json?: unknown }) => {
         if (endpoint === "/api/projects/1/") {
@@ -210,10 +210,23 @@ describe("frontend user flows", () => {
     );
     renderProjectPage();
 
-    fireEvent.change(await screen.findByPlaceholderText("New task title"), {
+    fireEvent.click(await screen.findByRole("button", { name: "New task" }));
+    expect(
+      await screen.findByRole("dialog", { name: "New task" }),
+    ).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Title"), {
       target: { value: "Write release notes" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Add task" }));
+    fireEvent.change(screen.getByLabelText("Description"), {
+      target: { value: "Summarize the latest release." },
+    });
+    fireEvent.change(screen.getByLabelText("Priority"), {
+      target: { value: "HIGH" },
+    });
+    fireEvent.change(screen.getByLabelText("Due date"), {
+      target: { value: "2026-11-12" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create task" }));
 
     await waitFor(() => {
       expect(mocks.api).toHaveBeenCalledWith("/api/tasks/", {
@@ -221,10 +234,109 @@ describe("frontend user flows", () => {
         json: {
           project: 1,
           title: "Write release notes",
+          description: "Summarize the latest release.",
+          priority: "HIGH",
           assigned_to: null,
+          due_date: "2026-11-12",
         },
       });
     });
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+  });
+
+  it("rolls back a failed keyboard task move and shows a toast", async () => {
+    const task = {
+      id: 10,
+      project: 1,
+      organization: 2,
+      title: "Prepare launch plan",
+      description: "",
+      status: "TODO",
+      priority: "HIGH",
+      assigned_to: null,
+      assigned_to_name: null,
+      created_by: 5,
+      created_by_name: "Avery",
+      due_date: null,
+    };
+    mocks.api.mockImplementation(
+      async (endpoint: string, init?: RequestInit & { json?: unknown }) => {
+        if (endpoint === "/api/projects/1/") {
+          return {
+            id: 1,
+            organization: 2,
+            name: "Roadmap",
+            description: "",
+            status: "ACTIVE",
+            created_by: 1,
+          };
+        }
+        if (endpoint === "/api/organizations/") {
+          return [{ id: 2, name: "Acme", role: "MEMBER" }];
+        }
+        if (endpoint === "/api/organizations/2/members/") return [];
+        if (endpoint.startsWith("/api/tasks/?")) return { results: [task] };
+        if (endpoint === "/api/tasks/10/" && init?.method === "PATCH") {
+          throw new Error("Network unavailable");
+        }
+        throw new Error(`Unexpected API call: ${endpoint}`);
+      },
+    );
+    renderProjectPage();
+
+    const moveMenu = await screen.findByRole("combobox", {
+      name: "Move Prepare launch plan to",
+    });
+    fireEvent.change(moveMenu, { target: { value: "IN_PROGRESS" } });
+
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Couldn’t move task. Reverted.",
+    );
+    await waitFor(() => expect(moveMenu).toHaveValue("TODO"));
+    expect(mocks.api).toHaveBeenCalledWith("/api/tasks/10/", {
+      method: "PATCH",
+      json: { status: "IN_PROGRESS" },
+    });
+  });
+
+  it("opens project edit and archive actions from the header menu", async () => {
+    mocks.api.mockImplementation(async (endpoint: string) => {
+      if (endpoint === "/api/projects/1/") {
+        return {
+          id: 1,
+          organization: 2,
+          name: "Roadmap",
+          description: "",
+          status: "ACTIVE",
+          created_by: 1,
+        };
+      }
+      if (endpoint === "/api/organizations/") {
+        return [{ id: 2, name: "Acme", role: "OWNER" }];
+      }
+      if (endpoint === "/api/organizations/2/members/") return [];
+      if (endpoint.startsWith("/api/tasks/?")) return { results: [] };
+      throw new Error(`Unexpected API call: ${endpoint}`);
+    });
+    renderProjectPage();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Project actions" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Edit project" }));
+    expect(
+      screen.getByRole("button", { name: "Save project" }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Project actions" }));
+    fireEvent.click(screen.getByRole("button", { name: "Archive project" }));
+    expect(
+      await screen.findByRole("alertdialog", {
+        name: "Archive this project?",
+      }),
+    ).toBeInTheDocument();
   });
 
   it("hides task creation and deletion controls from viewers", async () => {
@@ -248,7 +360,7 @@ describe("frontend user flows", () => {
     });
     renderProjectPage();
 
-    expect(await screen.findByText("VIEWER")).toBeInTheDocument();
+    expect(await screen.findByText("Viewer")).toBeInTheDocument();
     expect(
       await screen.findByText("0 tasks · 0 done · 0 members"),
     ).toBeInTheDocument();
@@ -256,7 +368,7 @@ describe("frontend user flows", () => {
       screen.getByRole("heading", { name: "Organization members (0)" }),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "Add task" }),
+      screen.queryByRole("button", { name: "New task" }),
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "Delete" }),
@@ -289,23 +401,21 @@ describe("frontend user flows", () => {
       });
       renderProjectPage();
 
-      expect(await screen.findByText(role)).toBeInTheDocument();
+      const roleLabel = role[0] + role.slice(1).toLowerCase();
+      expect(await screen.findByText(roleLabel)).toBeInTheDocument();
       expect(
-        screen.queryByRole("button", { name: "Edit project" }),
-      ).not.toBeInTheDocument();
-      expect(
-        screen.queryByRole("button", { name: "Archive project" }),
+        screen.queryByRole("button", { name: "Project actions" }),
       ).not.toBeInTheDocument();
       expect(
         screen.queryByRole("button", { name: "Invite member" }),
       ).not.toBeInTheDocument();
       if (role === "VIEWER") {
         expect(
-          screen.queryByRole("button", { name: "Add task" }),
+          screen.queryByRole("button", { name: "New task" }),
         ).not.toBeInTheDocument();
       } else {
         expect(
-          await screen.findByRole("button", { name: "Add task" }),
+          await screen.findByRole("button", { name: "New task" }),
         ).toBeInTheDocument();
       }
     },
