@@ -863,9 +863,7 @@ export default function Dashboard() {
               disabled={leaveOrganization.isPending}
               onClick={() => leaveOrganization.mutate()}
             >
-              {leaveOrganization.isPending
-                ? "Leaving…"
-                : "Leave organization"}
+              {leaveOrganization.isPending ? "Leaving…" : "Leave organization"}
             </button>
           </div>
         </AccessibleDialog>

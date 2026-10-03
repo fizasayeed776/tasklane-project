@@ -28,7 +28,7 @@ export default function SettingsPage() {
   const [emailSuccess, setEmailSuccess] = useState("");
 
   // Organization danger zone state
-  const [org, setOrg] = useState<string>(() => localStorage.getItem("org") ?? "");
+  const [org, setOrg] = useState<string>("");
   const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleteNameInput, setDeleteNameInput] = useState("");
@@ -307,8 +307,8 @@ export default function SettingsPage() {
                 <p className="text-sm font-medium">Delete organization</p>
                 <p className="text-xs text-muted">
                   Permanently deletes all projects, tasks, comments, and
-                  activity. Transfer ownership first if you want someone else
-                  to manage it.
+                  activity. Transfer ownership first if you want someone else to
+                  manage it.
                 </p>
               </div>
               <button
@@ -352,9 +352,7 @@ export default function SettingsPage() {
               disabled={leaveOrganization.isPending}
               onClick={() => leaveOrganization.mutate()}
             >
-              {leaveOrganization.isPending
-                ? "Leaving…"
-                : "Leave organization"}
+              {leaveOrganization.isPending ? "Leaving…" : "Leave organization"}
             </button>
           </div>
         </AccessibleDialog>
