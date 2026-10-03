@@ -22,6 +22,7 @@ import ProjectPage from "./(app)/projects/[id]/page";
 import TaskPage from "./(app)/tasks/[id]/page";
 import NotificationsNavbar from "./components/NotificationsNavbar";
 import AppShell from "./components/AppShell";
+import { ToastProvider } from "./components/ToastProvider";
 import Dashboard from "./(app)/dashboard/page";
 
 class MockWebSocket {
@@ -46,7 +47,9 @@ function renderProjectPage() {
   });
   return render(
     <QueryClientProvider client={client}>
-      <ProjectPage />
+      <ToastProvider>
+        <ProjectPage />
+      </ToastProvider>
     </QueryClientProvider>,
   );
 }
@@ -57,7 +60,9 @@ function renderDashboard() {
   });
   return render(
     <QueryClientProvider client={client}>
-      <Dashboard />
+      <ToastProvider>
+        <Dashboard />
+      </ToastProvider>
     </QueryClientProvider>,
   );
 }
@@ -81,7 +86,9 @@ function renderTaskPage() {
   });
   return render(
     <QueryClientProvider client={client}>
-      <TaskPage />
+      <ToastProvider>
+        <TaskPage />
+      </ToastProvider>
     </QueryClientProvider>,
   );
 }
@@ -291,8 +298,8 @@ describe("frontend user flows", () => {
     });
     fireEvent.change(moveMenu, { target: { value: "IN_PROGRESS" } });
 
-    expect(await screen.findByRole("status")).toHaveTextContent(
-      "Couldn’t move task. Reverted.",
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Couldn't move task. Reverted.",
     );
     await waitFor(() => expect(moveMenu).toHaveValue("TODO"));
     expect(mocks.api).toHaveBeenCalledWith("/api/tasks/10/", {
@@ -337,6 +344,62 @@ describe("frontend user flows", () => {
         name: "Archive this project?",
       }),
     ).toBeInTheDocument();
+  });
+
+  it("confirms task deletion before sending the delete request", async () => {
+    const task = {
+      id: 10,
+      project: 1,
+      organization: 2,
+      title: "Old draft",
+      description: "",
+      status: "TODO",
+      priority: "LOW",
+      assigned_to: null,
+      assigned_to_name: null,
+      created_by: 5,
+      created_by_name: "Avery",
+      due_date: null,
+    };
+    mocks.api.mockImplementation(
+      async (endpoint: string, init?: RequestInit & { json?: unknown }) => {
+        if (endpoint === "/api/projects/1/") {
+          return {
+            id: 1,
+            organization: 2,
+            name: "Roadmap",
+            description: "",
+            status: "ACTIVE",
+            created_by: 1,
+          };
+        }
+        if (endpoint === "/api/organizations/") {
+          return [{ id: 2, name: "Acme", role: "OWNER" }];
+        }
+        if (endpoint === "/api/organizations/2/members/") return [];
+        if (endpoint.startsWith("/api/tasks/?")) return { results: [task] };
+        if (endpoint === "/api/tasks/10/" && init?.method === "DELETE") {
+          return undefined;
+        }
+        throw new Error(`Unexpected API call: ${endpoint}`);
+      },
+    );
+    renderProjectPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Delete" }));
+    expect(
+      await screen.findByRole("alertdialog", { name: "Delete “Old draft”?" }),
+    ).toBeInTheDocument();
+    expect(mocks.api).not.toHaveBeenCalledWith(
+      "/api/tasks/10/",
+      expect.objectContaining({ method: "DELETE" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Delete task" }));
+    await waitFor(() => {
+      expect(mocks.api).toHaveBeenCalledWith("/api/tasks/10/", {
+        method: "DELETE",
+      });
+    });
   });
 
   it("hides task creation and deletion controls from viewers", async () => {
@@ -449,9 +512,9 @@ describe("frontend user flows", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Send invitation" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "No registered user with that email.",
-    );
+    expect(
+      await screen.findAllByText("No registered user with that email."),
+    ).not.toHaveLength(0);
   });
 
   it("confirms a pending invitation and clears the invite form on success", async () => {
@@ -491,9 +554,11 @@ describe("frontend user flows", () => {
     fireEvent.change(email, { target: { value: "new@example.com" } });
     fireEvent.click(screen.getByRole("button", { name: "Send invitation" }));
 
-    expect(await screen.findByRole("status")).toHaveTextContent(
-      "Invitation sent to new@example.com.",
-    );
+    expect(
+      await screen.findByText(
+        "Invitation sent to new@example.com. They can register to join.",
+      ),
+    ).toBeInTheDocument();
     expect(email).toHaveValue("");
     expect(mocks.api).toHaveBeenCalledWith(
       "/api/organizations/2/members/",
@@ -873,5 +938,13 @@ describe("frontend user flows", () => {
     expect(
       await screen.findByRole("link", { name: "A teammate commented." }),
     ).toHaveAttribute("href", "/tasks/8");
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Mark notification as read: A teammate commented.",
+      }),
+    );
+    expect(
+      screen.getByRole("button", { name: "Notifications" }),
+    ).toBeInTheDocument();
   });
 });

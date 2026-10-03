@@ -15,6 +15,8 @@ import {
   Task,
 } from "@/lib/api";
 import { initials, relativeTime, roleLabel } from "@/lib/format";
+import QueryError from "../../../components/QueryError";
+import { useToast } from "../../../components/ToastProvider";
 
 type TaskComment = {
   id: number;
@@ -67,6 +69,7 @@ function formattedDate(value?: string | null) {
 export default function TaskPage() {
   const { id } = useParams<{ id: string }>();
   const qc = useQueryClient();
+  const toast = useToast();
   const [text, setText] = useState("");
   const [titleEditing, setTitleEditing] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
@@ -127,7 +130,9 @@ export default function TaskPage() {
     onSuccess: () => {
       setText("");
       refresh();
+      toast("success", "Comment added.");
     },
+    onError: (error) => toast("error", errorMessage(error)),
   });
   const updateComment = useMutation({
     mutationFn: ({
@@ -145,12 +150,18 @@ export default function TaskPage() {
       setEditingComment(null);
       setCommentDraft("");
       refresh();
+      toast("success", "Comment updated.");
     },
+    onError: (error) => toast("error", errorMessage(error)),
   });
   const del = useMutation({
     mutationFn: (commentId: number) =>
       api(`/api/comments/${commentId}/`, { method: "DELETE" }),
-    onSuccess: refresh,
+    onSuccess: () => {
+      refresh();
+      toast("success", "Comment deleted.");
+    },
+    onError: (error) => toast("error", errorMessage(error)),
   });
   const updateTask = useMutation({
     mutationFn: (changes: TaskUpdate) =>
@@ -161,9 +172,29 @@ export default function TaskPage() {
         queryKey: ["tasks", String(task.data?.project)],
       });
       setTitleEditing(false);
+      toast("success", "Task updated.");
     },
+    onError: (error) => toast("error", errorMessage(error)),
   });
 
+  const queryError =
+    task.error ??
+    orgs.error ??
+    me.error ??
+    comments.error ??
+    activity.error ??
+    members.error;
+  if (queryError) {
+    return (
+      <main className="px-4 py-8 sm:px-6">
+        <QueryError
+          error={queryError}
+          resource="task"
+          onRetry={() => void qc.invalidateQueries()}
+        />
+      </main>
+    );
+  }
   const currentTask = task.data;
   const commentsList = comments.data ?? [];
   const activityList = activity.data ?? [];

@@ -17,6 +17,8 @@ import {
   setOrganization,
 } from "@/lib/api";
 import { initials, relativeTime, roleLabel } from "@/lib/format";
+import QueryError from "../../components/QueryError";
+import { useToast } from "../../components/ToastProvider";
 
 type ProjectTaskPage = {
   count: number;
@@ -63,6 +65,7 @@ function activityGlyph(verb: string) {
 
 export default function Dashboard() {
   const qc = useQueryClient();
+  const toast = useToast();
   const [org, setOrg] = useState<string>(""),
     [name, setName] = useState(""),
     [pname, setPname] = useState(""),
@@ -141,7 +144,9 @@ export default function Dashboard() {
       setName("");
       qc.invalidateQueries({ queryKey: ["orgs"] });
       pick(String(o.id));
+      toast("success", "Organization created.");
     },
+    onError: (error) => toast("error", errorMessage(error)),
   });
   const createProject = useMutation({
     mutationFn: () =>
@@ -154,7 +159,9 @@ export default function Dashboard() {
       setProjectModalOpen(false);
       qc.invalidateQueries({ queryKey: ["projects"] });
       qc.invalidateQueries({ queryKey: ["stats", org] });
+      toast("success", "Project created.");
     },
+    onError: (error) => toast("error", errorMessage(error)),
   });
   const inviteMember = useMutation({
     mutationFn: () =>
@@ -173,7 +180,14 @@ export default function Dashboard() {
           : `${result.email} was added to this organization.`,
       );
       await qc.invalidateQueries({ queryKey: ["members", org] });
+      toast(
+        "success",
+        result.pending
+          ? `Invitation sent to ${result.email}.`
+          : `${result.email} was added to this organization.`,
+      );
     },
+    onError: (error) => toast("error", errorMessage(error)),
   });
   const changeMemberRole = useMutation({
     mutationFn: ({ id, role }: { id: number; role: OrgMember["role"] }) =>
@@ -184,7 +198,9 @@ export default function Dashboard() {
     onSuccess: async () => {
       setMemberFeedback("Member role updated.");
       await qc.invalidateQueries({ queryKey: ["members", org] });
+      toast("success", "Member role updated.");
     },
+    onError: (error) => toast("error", errorMessage(error)),
   });
   const removeMember = useMutation({
     mutationFn: (id: number) =>
@@ -193,8 +209,28 @@ export default function Dashboard() {
       setMemberFeedback("Member removed from this organization.");
       setMemberPendingRemoval(null);
       await qc.invalidateQueries({ queryKey: ["members", org] });
+      toast("success", "Member removed from this organization.");
     },
+    onError: (error) => toast("error", errorMessage(error)),
   });
+  const queryError =
+    orgs.error ??
+    members.error ??
+    stats.error ??
+    projects.error ??
+    projectSummaries.find((summary) => summary.isError)?.error ??
+    activity.error;
+  if (queryError) {
+    return (
+      <main className="px-4 py-8 sm:px-6">
+        <QueryError
+          error={queryError}
+          resource="dashboard"
+          onRetry={() => void qc.invalidateQueries()}
+        />
+      </main>
+    );
+  }
   const s = stats.data;
   const statsRow: [string, number | undefined][] = [
     ["Projects", s?.total_projects],
@@ -228,7 +264,7 @@ export default function Dashboard() {
             className="btn shrink-0 whitespace-nowrap"
             disabled={createOrg.isPending}
           >
-            Create organization
+            {createOrg.isPending ? "Creating…" : "Create organization"}
           </button>
           {createOrg.isError && (
             <p role="alert" className="text-sm text-warn">

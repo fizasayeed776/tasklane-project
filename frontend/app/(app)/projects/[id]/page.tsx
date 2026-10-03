@@ -16,6 +16,8 @@ import {
   Task,
 } from "@/lib/api";
 import { initials, relativeTime, roleLabel } from "@/lib/format";
+import QueryError from "../../../components/QueryError";
+import { useToast } from "../../../components/ToastProvider";
 
 const PRIORITIES = ["LOW", "MEDIUM", "HIGH", "URGENT"] as const;
 const PRIORITY_COLORS: Record<string, string> = {
@@ -34,6 +36,7 @@ const STATUS_LABELS: Record<Status, string> = {
 export default function ProjectPage() {
   const { id } = useParams<{ id: string }>();
   const qc = useQueryClient();
+  const toast = useToast();
   const [search, setSearch] = useState("");
   const [priorityFilter, setPriorityFilter] = useState("");
   const [assigneeFilter, setAssigneeFilter] = useState("");
@@ -50,7 +53,6 @@ export default function ProjectPage() {
   const [deleteTarget, setDeleteTarget] = useState<Task | null>(null);
   const [archivePrompt, setArchivePrompt] = useState(false);
   const [dropTarget, setDropTarget] = useState<Status | null>(null);
-  const [moveNotice, setMoveNotice] = useState(false);
   const taskFilters = useMemo(
     () => ({ search, priority: priorityFilter, assigned_to: assigneeFilter }),
     [search, priorityFilter, assigneeFilter],
@@ -112,7 +114,9 @@ export default function ProjectPage() {
       setAssignee("");
       setDueDate("");
       setCreateOpen(false);
+      toast("success", "Task created.");
     },
+    onError: (error) => toast("error", errorMessage(error)),
   });
   const move = useMutation({
     mutationFn: ({ task, status }: { task: Task; status: Status }) =>
@@ -135,13 +139,19 @@ export default function ProjectPage() {
     },
     onError: (_error, _variables, context) => {
       qc.setQueryData(tasksKey, context?.prev);
-      setMoveNotice(true);
+      toast("error", "Couldn't move task. Reverted.");
     },
+    onSuccess: () => toast("success", "Task moved."),
     onSettled: () => qc.invalidateQueries({ queryKey: ["tasks", id] }),
   });
   const remove = useMutation({
     mutationFn: (t: Task) => api(`/api/tasks/${t.id}/`, { method: "DELETE" }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["tasks", id] }),
+    onSuccess: () => {
+      setDeleteTarget(null);
+      qc.invalidateQueries({ queryKey: ["tasks", id] });
+      toast("success", "Task deleted.");
+    },
+    onError: (error) => toast("error", errorMessage(error)),
   });
   const updateProject = useMutation({
     mutationFn: () =>
@@ -150,7 +160,9 @@ export default function ProjectPage() {
       await qc.invalidateQueries({ queryKey: ["project", id] });
       await qc.invalidateQueries({ queryKey: ["projects"] });
       setEditing(false);
+      toast("success", "Project updated.");
     },
+    onError: (error) => toast("error", errorMessage(error)),
   });
   const archiveProject = useMutation({
     mutationFn: (status: Project["status"]) =>
@@ -158,7 +170,10 @@ export default function ProjectPage() {
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ["project", id] });
       await qc.invalidateQueries({ queryKey: ["projects"] });
+      setArchivePrompt(false);
+      toast("success", "Project status updated.");
     },
+    onError: (error) => toast("error", errorMessage(error)),
   });
   const list = tasks.data?.results ?? [];
   useEffect(() => {
@@ -173,11 +188,19 @@ export default function ProjectPage() {
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [createOpen, actionsOpen, deleteTarget, archivePrompt]);
-  useEffect(() => {
-    if (!moveNotice) return;
-    const timeout = window.setTimeout(() => setMoveNotice(false), 4000);
-    return () => window.clearTimeout(timeout);
-  }, [moveNotice]);
+  const queryError =
+    project.error ?? orgs.error ?? members.error ?? tasks.error;
+  if (queryError) {
+    return (
+      <main className="px-4 py-8 sm:px-6">
+        <QueryError
+          error={queryError}
+          resource="project"
+          onRetry={() => void qc.invalidateQueries()}
+        />
+      </main>
+    );
+  }
   return (
     <main className="mx-auto max-w-7xl space-y-5 px-4 py-6 sm:px-6 lg:py-8">
       <nav aria-label="Breadcrumb" className="text-sm text-muted">
@@ -561,15 +584,6 @@ export default function ProjectPage() {
           </section>
         ))}
       </div>
-      {moveNotice && (
-        <p
-          role="status"
-          aria-live="polite"
-          className="fixed bottom-4 left-1/2 z-40 -translate-x-1/2 rounded-lg border border-line bg-surface px-4 py-3 text-sm"
-        >
-          Couldn’t move task. Reverted.
-        </p>
-      )}
       {createOpen && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-ink/35 p-4">
           <section
@@ -702,6 +716,7 @@ export default function ProjectPage() {
               <button
                 className="min-h-10 rounded-md border border-line px-4"
                 type="button"
+                disabled={archiveProject.isPending}
                 onClick={() => setArchivePrompt(false)}
               >
                 Cancel
@@ -714,7 +729,6 @@ export default function ProjectPage() {
                   archiveProject.mutate(
                     project.data?.status === "ARCHIVED" ? "ACTIVE" : "ARCHIVED",
                   );
-                  setArchivePrompt(false);
                 }}
               >
                 {archiveProject.isPending
@@ -750,6 +764,7 @@ export default function ProjectPage() {
               <button
                 className="min-h-10 rounded-md border border-line px-4"
                 type="button"
+                disabled={remove.isPending}
                 onClick={() => setDeleteTarget(null)}
               >
                 Cancel
@@ -760,7 +775,6 @@ export default function ProjectPage() {
                 disabled={remove.isPending}
                 onClick={() => {
                   remove.mutate(deleteTarget);
-                  setDeleteTarget(null);
                 }}
               >
                 {remove.isPending ? "Deleting…" : "Delete task"}
