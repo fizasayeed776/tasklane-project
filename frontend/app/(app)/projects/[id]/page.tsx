@@ -1,8 +1,20 @@
 "use client";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { useParams } from "next/navigation";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import {
+  useParams,
+  usePathname,
+  useRouter,
+  useSearchParams,
+} from "next/navigation";
+import {
+  FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   api,
   canManage,
@@ -21,6 +33,37 @@ import QueryError from "../../../components/QueryError";
 import { useToast } from "../../../components/ToastProvider";
 
 const PRIORITIES = ["LOW", "MEDIUM", "HIGH", "URGENT"] as const;
+type TaskFilters = {
+  search: string;
+  status: Status | "";
+  priority: (typeof PRIORITIES)[number] | "";
+  assigned_to: string;
+};
+
+function filtersFromQuery(query: string): TaskFilters {
+  const params = new URLSearchParams(query);
+  const status = params.get("status") ?? "";
+  const priority = params.get("priority") ?? "";
+  return {
+    search: params.get("search") ?? "",
+    status: STATUSES.includes(status as Status) ? (status as Status) : "",
+    priority: PRIORITIES.includes(priority as (typeof PRIORITIES)[number])
+      ? (priority as (typeof PRIORITIES)[number])
+      : "",
+    assigned_to: params.get("assigned_to") ?? "",
+  };
+}
+
+function queryWithFilters(query: string, filters: TaskFilters) {
+  const params = new URLSearchParams(query);
+  for (const key of ["search", "status", "priority", "assigned_to"] as const) {
+    const value = filters[key];
+    if (value) params.set(key, value);
+    else params.delete(key);
+  }
+  return params.toString();
+}
+
 const PRIORITY_COLORS: Record<string, string> = {
   LOW: "bg-muted",
   MEDIUM: "bg-blue-600",
@@ -36,11 +79,16 @@ const STATUS_LABELS: Record<Status, string> = {
 
 export default function ProjectPage() {
   const { id } = useParams<{ id: string }>();
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const queryString = searchParams.toString();
   const qc = useQueryClient();
   const toast = useToast();
-  const [search, setSearch] = useState("");
-  const [priorityFilter, setPriorityFilter] = useState("");
-  const [assigneeFilter, setAssigneeFilter] = useState("");
+  const [filters, setFilters] = useState<TaskFilters>(() =>
+    filtersFromQuery(queryString),
+  );
+  const [searchInput, setSearchInput] = useState(filters.search);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [priority, setPriority] =
@@ -54,11 +102,47 @@ export default function ProjectPage() {
   const [deleteTarget, setDeleteTarget] = useState<Task | null>(null);
   const [archivePrompt, setArchivePrompt] = useState(false);
   const [dropTarget, setDropTarget] = useState<Status | null>(null);
-  const taskFilters = useMemo(
-    () => ({ search, priority: priorityFilter, assigned_to: assigneeFilter }),
-    [search, priorityFilter, assigneeFilter],
+  const querySearchRef = useRef(filters.search);
+  const tasksKey = useMemo(
+    () => ["tasks", id, filters] as const,
+    [id, filters],
   );
-  const tasksKey = ["tasks", id, taskFilters];
+  const replaceFiltersInUrl = useCallback(
+    (nextFilters: TaskFilters, query = queryString) => {
+      const nextQuery = queryWithFilters(query, nextFilters);
+      router.replace(`${pathname}${nextQuery ? `?${nextQuery}` : ""}`, {
+        scroll: false,
+      });
+    },
+    [pathname, queryString, router],
+  );
+  useEffect(() => {
+    const nextFilters = filtersFromQuery(queryString);
+    if (nextFilters.search !== querySearchRef.current) {
+      setSearchInput(nextFilters.search);
+      querySearchRef.current = nextFilters.search;
+    }
+    setFilters(nextFilters);
+  }, [queryString, querySearchRef]);
+  useEffect(() => {
+    const nextSearch = searchInput.trim();
+    if (nextSearch === filters.search) return;
+    const timeout = window.setTimeout(() => {
+      const nextFilters = { ...filters, search: nextSearch };
+      setFilters(nextFilters);
+      querySearchRef.current = nextSearch;
+      replaceFiltersInUrl(nextFilters);
+    }, 300);
+    return () => window.clearTimeout(timeout);
+  }, [searchInput, filters, querySearchRef, replaceFiltersInUrl]);
+  const changeFilter = <K extends keyof TaskFilters>(
+    key: K,
+    value: TaskFilters[K],
+  ) => {
+    const nextFilters = { ...filters, [key]: value };
+    setFilters(nextFilters);
+    replaceFiltersInUrl(nextFilters);
+  };
   const project = useQuery<Project>({
     queryKey: ["project", id],
     queryFn: () => api(`/api/projects/${id}/`),
@@ -77,9 +161,10 @@ export default function ProjectPage() {
     queryKey: tasksKey,
     queryFn: () => {
       const params = new URLSearchParams({ project: id });
-      if (search) params.set("search", search);
-      if (priorityFilter) params.set("priority", priorityFilter);
-      if (assigneeFilter) params.set("assigned_to", assigneeFilter);
+      if (filters.search) params.set("search", filters.search);
+      if (filters.status) params.set("status", filters.status);
+      if (filters.priority) params.set("priority", filters.priority);
+      if (filters.assigned_to) params.set("assigned_to", filters.assigned_to);
       return api(`/api/tasks/?${params.toString()}`);
     },
   });
@@ -130,16 +215,19 @@ export default function ProjectPage() {
         current
           ? {
               ...current,
-              results: current.results.map((item) =>
-                item.id === task.id ? { ...item, status } : item,
-              ),
+              results:
+                filters.status && filters.status !== status
+                  ? current.results.filter((item) => item.id !== task.id)
+                  : current.results.map((item) =>
+                      item.id === task.id ? { ...item, status } : item,
+                    ),
             }
           : current,
       );
-      return { prev };
+      return { prev, queryKey: tasksKey };
     },
     onError: (_error, _variables, context) => {
-      qc.setQueryData(tasksKey, context?.prev);
+      if (context) qc.setQueryData(context.queryKey, context.prev);
       toast("error", "Couldn't move task. Reverted.");
     },
     onSuccess: () => toast("success", "Task moved."),
@@ -379,17 +467,40 @@ export default function ProjectPage() {
           <input
             className="input w-full"
             placeholder="Search tasks"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
+            value={searchInput}
+            onChange={(event) => setSearchInput(event.target.value)}
           />
+        </label>
+        <label>
+          <span className="sr-only">Filter by status</span>
+          <select
+            aria-label="Filter by status"
+            className="input w-auto"
+            value={filters.status}
+            onChange={(event) =>
+              changeFilter("status", event.target.value as Status | "")
+            }
+          >
+            <option value="">All statuses</option>
+            {STATUSES.map((value) => (
+              <option key={value} value={value}>
+                {roleLabel(value)}
+              </option>
+            ))}
+          </select>
         </label>
         <label>
           <span className="sr-only">Filter by priority</span>
           <select
             aria-label="Filter by priority"
             className="input w-auto"
-            value={priorityFilter}
-            onChange={(event) => setPriorityFilter(event.target.value)}
+            value={filters.priority}
+            onChange={(event) =>
+              changeFilter(
+                "priority",
+                event.target.value as TaskFilters["priority"],
+              )
+            }
           >
             <option value="">All priorities</option>
             {PRIORITIES.map((value) => (
@@ -404,8 +515,10 @@ export default function ProjectPage() {
           <select
             aria-label="Filter by assignee"
             className="input w-auto max-w-44"
-            value={assigneeFilter}
-            onChange={(event) => setAssigneeFilter(event.target.value)}
+            value={filters.assigned_to}
+            onChange={(event) =>
+              changeFilter("assigned_to", event.target.value)
+            }
           >
             <option value="">All assignees</option>
             {members.data?.map((member) => (
@@ -415,6 +528,24 @@ export default function ProjectPage() {
             ))}
           </select>
         </label>
+        <button
+          type="button"
+          className="btn shrink-0 whitespace-nowrap"
+          onClick={() => {
+            const cleared: TaskFilters = {
+              search: "",
+              status: "",
+              priority: "",
+              assigned_to: "",
+            };
+            setFilters(cleared);
+            setSearchInput("");
+            querySearchRef.current = "";
+            replaceFiltersInUrl(cleared);
+          }}
+        >
+          Clear filters
+        </button>
         {writable && (
           <button
             type="button"
@@ -428,6 +559,19 @@ export default function ProjectPage() {
       {remove.isError && (
         <p role="alert" className="text-sm text-warn">
           {errorMessage(remove.error)}
+        </p>
+      )}
+      {tasks.isFetching && (
+        <p role="status" className="text-sm text-muted">
+          Loading tasks…
+        </p>
+      )}
+      {!tasks.isFetching && list.length === 0 && (
+        <p
+          role="status"
+          className="rounded-lg border border-line p-4 text-sm text-muted"
+        >
+          No tasks match these filters
         </p>
       )}
       <div
@@ -464,12 +608,22 @@ export default function ProjectPage() {
                 {STATUS_LABELS[col]}
               </span>
               <span className="text-xs font-normal text-muted">
-                {list.filter((task) => task.status === col).length}
+                {
+                  list.filter(
+                    (task) =>
+                      task.status === col &&
+                      (!filters.status || filters.status === col),
+                  ).length
+                }
               </span>
             </h2>
             <div className="min-h-24 space-y-2">
               {list
-                .filter((task) => task.status === col)
+                .filter(
+                  (task) =>
+                    task.status === col &&
+                    (!filters.status || filters.status === col),
+                )
                 .map((task) => {
                   const overdue =
                     task.due_date &&
