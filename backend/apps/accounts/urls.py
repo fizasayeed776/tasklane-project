@@ -9,6 +9,7 @@ urlpatterns = [
     path("logout/", v.LogoutView.as_view()),
     path("me/", v.MeView.as_view()),
     path("password/change/", v.ChangePasswordView.as_view()),
+    path("email/change/", v.ChangeEmailView.as_view()),
     path("password/forgot/", v.ForgotPasswordView.as_view()),
     path("password/reset/", v.ResetPasswordView.as_view()),
 ]

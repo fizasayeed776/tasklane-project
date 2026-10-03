@@ -73,7 +73,7 @@ The REST API is rooted at `/api/`:
 
 | Resource | Routes |
 | --- | --- |
-| Authentication | `/api/auth/register/`, `/login/`, `/refresh/`, `/logout/`, `/me/`, `/password/change/`, `/password/forgot/`, `/password/reset/` |
+| Authentication | `/api/auth/register/`, `/login/`, `/refresh/`, `/logout/`, `/me/`, `/password/change/`, `/email/change/`, `/password/forgot/`, `/password/reset/` |
 | Organizations | `/api/organizations/`, `/api/organizations/{id}/`, `/api/organizations/{id}/members/` (GET/POST), `/api/organizations/{id}/members/{member_id}/` (PATCH/DELETE), `/api/organizations/{id}/projects/` |
 | Projects | `/api/projects/`, `/api/projects/{id}/` |
 | Tasks | `/api/tasks/`, `/api/tasks/{id}/`, `/comments/`, `/activity/` |
@@ -94,8 +94,9 @@ Tasks can also be filtered by `project`; project lists support `status` and `org
 - Protected HTTP requests send Authorization: Bearer <access-token>.
 - Access tokens last 15 minutes by default; refresh tokens last 7 days by default. Both values are configurable.
 - The frontend stores the tokens in browser `localStorage` and refreshes after a 401. Refresh rotation is enabled and the replaced refresh token is blacklisted.
-- Logout blacklists the submitted refresh token. Password-change and reset endpoints validate the new password with Django's configured validators.
-- Login, register, refresh, logout, password change, forgot-password, and reset-password endpoints use the `auth` throttle scope (10 requests/minute by default). Forgot-password responses do not reveal whether an email address exists.
+- Logout blacklists the submitted refresh token. Password changes validate the new password with Django's configured validators, reject reusing the current password, blacklist all existing refresh tokens, and return a new token pair for the active session.
+- Authenticated users can change their own password or email at `/api/auth/password/change/` and `/api/auth/email/change/`, regardless of organization role. Email changes require the current password, use case-insensitive uniqueness, and send a notice to the previous email address. `/api/auth/me/` only allows first-name edits.
+- Login, register, refresh, logout, password change, email change, forgot-password, and reset-password endpoints use the `auth` throttle scope (10 requests/minute by default). Forgot-password responses do not reveal whether an email address exists.
 - WebSocket authentication sends the access token as a `jwt.<token>` WebSocket subprotocol (alongside the `tasklane` protocol), not in the URL query string.
 
 ### Tenant isolation and permissions

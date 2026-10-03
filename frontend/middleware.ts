@@ -6,5 +6,10 @@ export function middleware(req: NextRequest) {
     return NextResponse.redirect(new URL("/login", req.url));
 }
 export const config = {
-  matcher: ["/dashboard/:path*", "/projects/:path*", "/tasks/:path*"],
+  matcher: [
+    "/dashboard/:path*",
+    "/projects/:path*",
+    "/tasks/:path*",
+    "/settings/:path*",
+  ],
 };

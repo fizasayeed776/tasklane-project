@@ -9,6 +9,7 @@ from django.test import override_settings
 from rest_framework.test import APIClient
 
 from apps.accounts.models import User
+from apps.organizations.models import Organization, OrganizationMember
 
 
 pytestmark = pytest.mark.django_db
@@ -140,9 +141,179 @@ def test_me_and_password_change_only_update_allowed_fields():
         format="json",
     )
     assert response.status_code == 200
+    assert response.json()["success"] is True
+    assert response.json()["access"]
+    assert response.json()["refresh"]
     assert User.objects.get(email="user@example.com").check_password(
         "AnotherStrong!567"
     )
+    assert (
+        client.post(
+            "/api/auth/refresh/",
+            {"refresh": tokens["refresh"]},
+            format="json",
+        ).status_code
+        == 401
+    )
+
+
+@pytest.mark.parametrize("role", ["OWNER", "ADMIN", "MEMBER", "VIEWER"])
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+def test_every_organization_role_can_change_own_password_and_email(role):
+    mail.outbox = []
+    user = User.objects.create_user("member@example.com", "StrongPass!234")
+    organization = Organization.objects.create(
+        name="Account settings",
+        slug=f"account-settings-{role.lower()}",
+        owner=user,
+    )
+    OrganizationMember.objects.create(organization=organization, user=user, role=role)
+    client = APIClient()
+    tokens = login(client, user.email, "StrongPass!234").json()
+    client.credentials(HTTP_AUTHORIZATION=f"Bearer {tokens['access']}")
+
+    password_response = client.post(
+        "/api/auth/password/change/",
+        {"old_password": "StrongPass!234", "new_password": "NewStrong!567"},
+        format="json",
+    )
+    assert password_response.status_code == 200
+    assert set(password_response.json()) == {"success", "access", "refresh"}
+    assert password_response.json()["success"] is True
+    assert User.objects.get(pk=user.pk).check_password("NewStrong!567")
+
+    client.credentials(
+        HTTP_AUTHORIZATION=f"Bearer {password_response.json()['access']}"
+    )
+    email_response = client.post(
+        "/api/auth/email/change/",
+        {
+            "new_email": "  New.Address@Example.COM ",
+            "current_password": "NewStrong!567",
+        },
+        format="json",
+    )
+    assert email_response.status_code == 200
+    assert User.objects.get(pk=user.pk).email == "new.address@example.com"
+    assert len(mail.outbox) == 1
+    assert mail.outbox[0].to == ["member@example.com"]
+    assert "new.address@example.com" in mail.outbox[0].body
+
+
+def test_password_change_rejects_reusing_current_password():
+    user = User.objects.create_user("same@example.com", "StrongPass!234")
+    client = APIClient()
+    client.force_authenticate(user)
+
+    response = client.post(
+        "/api/auth/password/change/",
+        {"old_password": "StrongPass!234", "new_password": "StrongPass!234"},
+        format="json",
+    )
+    assert response.status_code == 400
+    assert response.json()["success"] is False
+    assert "different" in response.json()["error"]["message"]
+
+
+def test_change_password_and_email_reject_incorrect_current_password():
+    user = User.objects.create_user("wrong-password@example.com", "StrongPass!234")
+    client = APIClient()
+    client.force_authenticate(user)
+
+    password_response = client.post(
+        "/api/auth/password/change/",
+        {"old_password": "incorrect", "new_password": "NewStrong!567"},
+        format="json",
+    )
+    email_response = client.post(
+        "/api/auth/email/change/",
+        {"new_email": "new@example.com", "current_password": "incorrect"},
+        format="json",
+    )
+    assert password_response.status_code == email_response.status_code == 400
+    assert password_response.json()["success"] is False
+    assert email_response.json()["success"] is False
+    user.refresh_from_db()
+    assert user.email == "wrong-password@example.com"
+    assert user.check_password("StrongPass!234")
+
+
+def test_email_change_rejects_case_insensitive_duplicate():
+    user = User.objects.create_user("first@example.com", "StrongPass!234")
+    User.objects.create_user("second@example.com", "StrongPass!234")
+    client = APIClient()
+    client.force_authenticate(user)
+
+    response = client.post(
+        "/api/auth/email/change/",
+        {
+            "new_email": "SECOND@EXAMPLE.COM",
+            "current_password": "StrongPass!234",
+        },
+        format="json",
+    )
+    assert response.status_code == 400
+    assert response.json()["success"] is False
+    assert "already exists" in response.json()["error"]["message"]
+    user.refresh_from_db()
+    assert user.email == "first@example.com"
+
+
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+def test_email_change_only_updates_authenticated_user_and_rejects_current_email():
+    mail.outbox = []
+    user = User.objects.create_user("own@example.com", "StrongPass!234")
+    other_user = User.objects.create_user("other@example.com", "StrongPass!234")
+    client = APIClient()
+    client.force_authenticate(user)
+
+    same_email = client.post(
+        "/api/auth/email/change/",
+        {
+            "new_email": "OWN@example.com",
+            "current_password": "StrongPass!234",
+        },
+        format="json",
+    )
+    assert same_email.status_code == 400
+
+    response = client.post(
+        "/api/auth/email/change/",
+        {
+            "new_email": "updated@example.com",
+            "current_password": "StrongPass!234",
+            "user_id": other_user.pk,
+        },
+        format="json",
+    )
+    assert response.status_code == 200
+    user.refresh_from_db()
+    other_user.refresh_from_db()
+    assert user.email == "updated@example.com"
+    assert other_user.email == "other@example.com"
+    assert mail.outbox[-1].to == ["own@example.com"]
+
+
+@pytest.mark.parametrize(
+    ("path", "payload"),
+    [
+        (
+            "/api/auth/password/change/",
+            {"old_password": "StrongPass!234", "new_password": "NewStrong!567"},
+        ),
+        (
+            "/api/auth/email/change/",
+            {
+                "new_email": "new@example.com",
+                "current_password": "StrongPass!234",
+            },
+        ),
+    ],
+)
+def test_account_settings_endpoints_require_authentication(path, payload):
+    response = APIClient().post(path, payload, format="json")
+    assert response.status_code == 401
+    assert response.json()["success"] is False
 
 
 @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
