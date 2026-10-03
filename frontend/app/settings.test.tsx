@@ -11,7 +11,7 @@ vi.mock("@/lib/api", async (importOriginal) => {
   return { ...actual, api: mocks.api };
 });
 
-import SettingsPage from "./(app)/settings/page";
+import SettingsPage from "./(app)/settings/SettingsClient";
 
 function renderSettingsPage() {
   const client = new QueryClient({
