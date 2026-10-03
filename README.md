@@ -288,19 +288,33 @@ Backend tests enforce a minimum 80% coverage threshold. `pytest.ini` supplies a 
 
 ## Screenshots
 
-![Dashboard with stats and recent activity](docs/screenshots/01-dashboard.png)
+### Authentication
 
-![Project page](docs/screenshots/02-project.png)
+![Authentication](docs/screenshots/01-login.png)
 
-![Task comments page](docs/screenshots/03-comments-page.png)
+### Dashboard: stats, projects, recent activity
 
-![New task form](docs/screenshots/04-task.png)
+![Dashboard: stats, projects, recent activity](docs/screenshots/02-dashboard.png)
 
-![Task comments and activity](docs/screenshots/05-comments.png)
+### Members and roles
 
-![Account settings](docs/screenshots/06-settings.png)
+![Members and roles](docs/screenshots/03-members-roles.png)
 
-![Member dashboard with project activity and organization members](docs/screenshots/07-member-page.png)
+### Kanban board
+
+![Kanban board](docs/screenshots/05-kanban.png)
+
+### New task modal
+
+![New task modal](docs/screenshots/06-new-task.png)
+
+### Task detail with comments and activity history
+
+![Task detail with comments and activity history](docs/screenshots/07-task-detail.png)
+
+### Swagger/OpenAPI documentation
+
+![Swagger/OpenAPI documentation](docs/screenshots/10-swagger.png)
 
 ### Demo walkthrough
 
