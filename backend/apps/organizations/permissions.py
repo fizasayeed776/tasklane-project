@@ -20,6 +20,11 @@ class OrganizationRolePermission(BasePermission):
             minimum_role = OrganizationMember.Role.ADMIN
         elif action in {"retrieve", "projects"}:
             minimum_role = OrganizationMember.Role.VIEWER
+        elif action == "transfer_ownership":
+            minimum_role = OrganizationMember.Role.OWNER
+        elif action in {"leave", "destroy"}:
+            # leave: any member (VIEWER+); delete_org: OWNER — enforced in service
+            minimum_role = OrganizationMember.Role.VIEWER
         else:
             return True
 

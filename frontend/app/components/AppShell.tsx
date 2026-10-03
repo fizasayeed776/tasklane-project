@@ -146,7 +146,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             <button
               type="button"
               className="flex min-h-10 items-center gap-2 rounded-md border border-line px-3 text-sm hover:bg-accent-soft"
-              aria-label="Organization switcher"
+              aria-label={
+                currentOrg
+                  ? `Organization switcher. Your role: ${roleLabel(currentOrg.role)}`
+                  : "Organization switcher"
+              }
               aria-expanded={organizationMenuOpen}
               aria-controls="organization-menu"
               onClick={() => setOrganizationMenuOpen((open) => !open)}
@@ -154,11 +158,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               <span className="max-w-36 truncate">
                 {currentOrg?.name ?? "Choose organization"}
               </span>
-              {currentOrg && (
-                <span className="rounded-full bg-accent-soft px-2 py-0.5 text-xs text-ink">
-                  {roleLabel(currentOrg.role)}
-                </span>
-              )}
               <ChevronDown open={organizationMenuOpen} />
             </button>
             {organizationMenuOpen && (
@@ -168,23 +167,38 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 aria-label="Organizations"
                 className="absolute right-0 top-12 z-40 w-64 rounded-lg border border-line bg-surface p-2"
               >
-                {orgs.data?.map((organization) => (
-                  <button
-                    key={organization.id}
-                    type="button"
-                    role="menuitem"
-                    className="flex min-h-10 w-full items-center justify-between gap-3 rounded-md px-3 text-left text-sm hover:bg-accent-soft"
-                    onClick={() => {
-                      chooseOrganization(String(organization.id));
-                      setOrganizationMenuOpen(false);
-                    }}
-                  >
-                    <span className="truncate">{organization.name}</span>
-                    <span className="shrink-0 rounded-full bg-accent-soft px-2 py-0.5 text-xs">
-                      {roleLabel(organization.role)}
-                    </span>
-                  </button>
-                ))}
+                <p className="px-3 pb-1 pt-0.5 text-xs font-medium text-muted">
+                  Organization
+                </p>
+                {orgs.data?.map((organization) => {
+                  const isDuplicate =
+                    (orgs.data?.filter((o) => o.name === organization.name)
+                      .length ?? 0) > 1;
+                  return (
+                    <button
+                      key={organization.id}
+                      type="button"
+                      role="menuitem"
+                      className="flex min-h-10 w-full flex-col justify-center rounded-md px-3 py-2 text-left text-sm hover:bg-accent-soft"
+                      onClick={() => {
+                        chooseOrganization(String(organization.id));
+                        setOrganizationMenuOpen(false);
+                      }}
+                    >
+                      <span className="flex items-center gap-1.5 truncate">
+                        <span className="truncate">{organization.name}</span>
+                        {isDuplicate && (
+                          <span className="shrink-0 text-xs text-muted">
+                            #{organization.id}
+                          </span>
+                        )}
+                      </span>
+                      <span className="text-xs text-muted">
+                        You are the {roleLabel(organization.role)}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>

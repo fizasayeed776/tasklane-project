@@ -9,13 +9,16 @@ from . import selectors, services
 from .models import Organization, PendingInvitation
 from .permissions import OrganizationRolePermission
 from .serializers import (
+    ApiErrorSerializer,
+    DeleteOrganizationSerializer,
     InviteResultSerializer,
     InviteSerializer,
+    LeaveOrganizationSerializer,
     MemberRoleSerializer,
     MemberSerializer,
     OrganizationSerializer,
     PendingInvitationSerializer,
-    ApiErrorSerializer,
+    TransferOwnershipSerializer,
 )
 
 
@@ -23,6 +26,7 @@ class OrganizationViewSet(
     mixins.CreateModelMixin,
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
+    mixins.DestroyModelMixin,
     viewsets.GenericViewSet,
 ):
     queryset = Organization.objects.none()
@@ -136,3 +140,81 @@ class OrganizationViewSet(
             self.get_object()
         )  # GET /api/organizations/2/projects/ by a non-member -> 404, no data
         return Response(ProjectSerializer(org.projects.all(), many=True).data)
+
+    @extend_schema(
+        methods=["POST"],
+        summary="Transfer organization ownership",
+        description=(
+            "Only the current OWNER may call this. The target must be an existing "
+            "member of the same organization. Previous owner becomes ADMIN."
+        ),
+        request=TransferOwnershipSerializer,
+        responses={
+            200: OrganizationSerializer,
+            400: ApiErrorSerializer,
+            401: ApiErrorSerializer,
+            403: ApiErrorSerializer,
+            404: ApiErrorSerializer,
+            429: ApiErrorSerializer,
+        },
+    )
+    @action(detail=True, methods=["post"], url_path="transfer-ownership")
+    def transfer_ownership(self, request, pk=None):
+        org = self.get_object()
+        s = TransferOwnershipSerializer(data=request.data)
+        s.is_valid(raise_exception=True)
+        target_member = selectors.member_in_organization(
+            org, s.validated_data["member_id"]
+        )
+        updated_org = services.transfer_ownership(request.user, org, target_member)
+        return Response(
+            OrganizationSerializer(updated_org, context={"request": request}).data
+        )
+
+    @extend_schema(
+        methods=["POST"],
+        summary="Leave the organization",
+        description=(
+            "Any member except the OWNER can leave. The OWNER must transfer "
+            "ownership first. Unassigns that user's tasks in the organization."
+        ),
+        request=LeaveOrganizationSerializer,
+        responses={
+            204: None,
+            400: ApiErrorSerializer,
+            401: ApiErrorSerializer,
+            403: ApiErrorSerializer,
+            404: ApiErrorSerializer,
+            429: ApiErrorSerializer,
+        },
+    )
+    @action(detail=True, methods=["post"])
+    def leave(self, request, pk=None):
+        org = self.get_object()
+        services.leave_organization(request.user, org)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @extend_schema(
+        methods=["DELETE"],
+        summary="Delete the organization",
+        description=(
+            "Only the OWNER may delete the organization. The request body must "
+            "contain the exact organization name as confirmation. Cascades all "
+            "projects, tasks, comments, activity, and pending invitations."
+        ),
+        request=DeleteOrganizationSerializer,
+        responses={
+            204: None,
+            400: ApiErrorSerializer,
+            401: ApiErrorSerializer,
+            403: ApiErrorSerializer,
+            404: ApiErrorSerializer,
+            429: ApiErrorSerializer,
+        },
+    )
+    def destroy(self, request, pk=None):
+        org = self.get_object()
+        s = DeleteOrganizationSerializer(data=request.data)
+        s.is_valid(raise_exception=True)
+        services.delete_organization(request.user, org, s.validated_data["name"])
+        return Response(status=status.HTTP_204_NO_CONTENT)
