@@ -272,13 +272,8 @@ Backend tests enforce a minimum 80% coverage threshold. `pytest.ini` supplies a 
 
 ## Screenshots
 
-No screenshots are included yet. Add reviewed application captures under [`docs/screenshots/`](./docs/screenshots/) when available:
-
-- `docs/screenshots/` — placeholder for future screenshots; no images are currently provided.
-
 ## Known limitations and next steps
 
 - Docker Compose is the local development stack, not a production high-availability deployment. Production ingress, TLS termination, managed-service provisioning, backups, monitoring, and secret rotation must be configured separately.
 - JWTs remain in browser `localStorage`; secure `httpOnly` cookie authentication is a future improvement and is required before using Server Components to fetch private API data.
 - The default email backend writes messages to the console. Configure and test a production email backend before relying on assignment mail delivery.
-- No screenshots are checked in; the placeholder folder is intentionally empty.
