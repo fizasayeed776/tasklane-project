@@ -20,12 +20,12 @@ vi.mock("@/lib/api", async (importOriginal) => {
   return { ...actual, api: mocks.api };
 });
 
-import Login from "./login/page";
-import ProjectPage from "./(app)/projects/[id]/page";
-import TaskPage from "./(app)/tasks/[id]/page";
+import Login from "./login/LoginForm";
+import ProjectPage from "./(app)/projects/[id]/ProjectClient";
+import TaskPage from "./(app)/tasks/[id]/TaskClient";
 import AppShell from "./components/AppShell";
 import { ToastProvider } from "./components/ToastProvider";
-import Dashboard from "./(app)/dashboard/page";
+import Dashboard from "./(app)/dashboard/DashboardClient";
 
 class MockWebSocket {
   static instances: MockWebSocket[] = [];
@@ -50,7 +50,7 @@ function renderProjectPage() {
   return render(
     <QueryClientProvider client={client}>
       <ToastProvider>
-        <ProjectPage />
+        <ProjectPage id="1" />
       </ToastProvider>
     </QueryClientProvider>,
   );
@@ -89,7 +89,7 @@ function renderTaskPage() {
   return render(
     <QueryClientProvider client={client}>
       <ToastProvider>
-        <TaskPage />
+        <TaskPage id="1" />
       </ToastProvider>
     </QueryClientProvider>,
   );
