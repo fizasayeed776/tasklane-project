@@ -113,24 +113,38 @@ export default function NotificationsNavbar() {
   if (!session.access) return null;
 
   return (
-    <nav className="flex items-center justify-end border-b border-line bg-white px-6 py-2">
+    <div className="relative flex items-center">
       {session.organization && (
         <button
           type="button"
-          className="rounded-md px-3 py-1.5 text-sm hover:bg-line/50"
+          className="relative grid size-10 place-items-center rounded-md text-sm hover:bg-accent-soft"
           aria-expanded={open}
           aria-label={`Notifications${notifications.length ? ` (${notifications.length})` : ""}${connectionError ? " disconnected" : ""}`}
           onClick={() => setOpen((value) => !value)}
         >
-          Notifications
-          {notifications.length > 0 ? ` (${notifications.length})` : ""}
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 24 24"
+            className="size-5"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+          >
+            <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
+            <path d="M10 21h4" />
+          </svg>
+          {notifications.length > 0 && (
+            <span className="absolute right-1 top-1 grid min-h-4 min-w-4 place-items-center rounded-full bg-danger px-1 text-[10px] font-semibold text-white">
+              {notifications.length > 9 ? "9+" : notifications.length}
+            </span>
+          )}
         </button>
       )}
       {open && (
-        <section className="absolute right-4 top-12 z-10 max-h-96 w-80 overflow-y-auto rounded-lg border border-line bg-white p-3 shadow-lg">
+        <section className="absolute right-0 top-12 z-40 max-h-96 w-80 overflow-y-auto rounded-lg border border-line bg-surface p-3 shadow-md">
           <h2 className="mb-2 font-semibold">Recent notifications</h2>
           {notifications.length === 0 ? (
-            <p className="text-sm text-ink/70">No new notifications.</p>
+            <p className="text-sm text-muted">No new notifications.</p>
           ) : (
             <ul className="space-y-2 text-sm">
               {notifications.map((notification) => (
@@ -156,6 +170,6 @@ export default function NotificationsNavbar() {
           )}
         </section>
       )}
-    </nav>
+    </div>
   );
 }

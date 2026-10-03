@@ -115,12 +115,28 @@ export default function TaskPage() {
   return (
     <main className="mx-auto max-w-3xl space-y-4 p-6">
       {t && (
-        <Link href={`/projects/${t.project}`} className="text-sm underline">
-          Back to project
-        </Link>
+        <nav aria-label="Breadcrumb" className="text-sm text-muted">
+          <ol className="flex items-center gap-2">
+            <li>
+              <Link href="/dashboard" className="hover:text-ink">
+                Dashboard
+              </Link>
+            </li>
+            <li aria-hidden="true">/</li>
+            <li>
+              <Link href={`/projects/${t.project}`} className="hover:text-ink">
+                Project
+              </Link>
+            </li>
+            <li aria-hidden="true">/</li>
+            <li aria-current="page" className="truncate text-ink">
+              {t.title}
+            </li>
+          </ol>
+        </nav>
       )}
       <header className="flex items-center gap-3">
-        <h1 className="text-xl font-semibold">{t?.title}</h1>
+        <h1 className="page-title text-2xl font-semibold">{t?.title}</h1>
         {canEditTask && !editing && (
           <button className="btn ml-auto" onClick={() => setEditing(true)}>
             Edit task

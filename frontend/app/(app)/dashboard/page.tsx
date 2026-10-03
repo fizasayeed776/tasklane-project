@@ -1,12 +1,10 @@
 "use client";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import {
   api,
   canManage,
-  clearSession,
   errorMessage,
   Org,
   OrgMember,
@@ -14,8 +12,7 @@ import {
 } from "@/lib/api";
 
 export default function Dashboard() {
-  const qc = useQueryClient(),
-    router = useRouter();
+  const qc = useQueryClient();
   const [org, setOrg] = useState<string>(""),
     [name, setName] = useState(""),
     [pname, setPname] = useState(""),
@@ -47,6 +44,12 @@ export default function Dashboard() {
       pick(String(orgs.data[0].id));
     }
   }, [orgs.data, pick]);
+  useEffect(() => {
+    const syncOrganization = () => setOrg(localStorage.getItem("org") ?? "");
+    window.addEventListener("tasklane:organization", syncOrganization);
+    return () =>
+      window.removeEventListener("tasklane:organization", syncOrganization);
+  }, []);
   const role = orgs.data?.find((o) => String(o.id) === org)?.role;
   const members = useQuery<OrgMember[]>({
     queryKey: ["members", org],
@@ -136,30 +139,7 @@ export default function Dashboard() {
   ];
   return (
     <main className="mx-auto max-w-5xl space-y-6 p-6">
-      <header className="flex flex-wrap items-center gap-3">
-        <h1 className="text-xl font-semibold">Dashboard</h1>
-        <select
-          aria-label="Organization"
-          className="input w-auto"
-          value={org}
-          onChange={(e) => pick(e.target.value)}
-        >
-          {orgs.data?.map((o) => (
-            <option key={o.id} value={o.id}>
-              {o.name} ({o.role.toLowerCase()})
-            </option>
-          ))}
-        </select>
-        <button
-          className="btn ml-auto"
-          onClick={() => {
-            clearSession();
-            router.push("/login");
-          }}
-        >
-          Log out
-        </button>
-      </header>
+      <h1 className="page-title text-2xl font-semibold">Dashboard</h1>
       {orgs.data && (orgs.data.length === 0 || (!!org && canManage(role))) && (
         <form
           className="flex flex-wrap gap-2"

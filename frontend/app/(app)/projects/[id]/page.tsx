@@ -112,11 +112,23 @@ export default function ProjectPage() {
   const list = tasks.data?.results ?? [];
   return (
     <main className="mx-auto max-w-6xl space-y-4 p-6">
-      <Link href="/dashboard" className="text-sm underline">
-        Back to dashboard
-      </Link>
+      <nav aria-label="Breadcrumb" className="text-sm text-muted">
+        <ol className="flex items-center gap-2">
+          <li>
+            <Link href="/dashboard" className="hover:text-ink">
+              Dashboard
+            </Link>
+          </li>
+          <li aria-hidden="true">/</li>
+          <li aria-current="page" className="truncate text-ink">
+            {project.data?.name ?? "Project"}
+          </li>
+        </ol>
+      </nav>
       <header className="flex flex-wrap items-center gap-3">
-        <h1 className="text-xl font-semibold">{project.data?.name}</h1>
+        <h1 className="page-title text-2xl font-semibold">
+          {project.data?.name}
+        </h1>
         {role && (
           <span className="rounded-full bg-line px-3 py-1 text-xs font-medium">
             {role}

@@ -3,14 +3,19 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { api, errorMessage, setSession } from "@/lib/api";
+import AuthCard from "../components/AuthCard";
+import PasswordField from "../components/PasswordField";
 
 export default function Login() {
   const router = useRouter();
   const [email, setEmail] = useState(""),
     [password, setPassword] = useState(""),
-    [err, setErr] = useState("");
+    [err, setErr] = useState(""),
+    [submitting, setSubmitting] = useState(false);
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    setErr("");
+    setSubmitting(true);
     try {
       const d = await api("/api/auth/login/", {
         method: "POST",
@@ -25,46 +30,55 @@ export default function Login() {
           ? "Email or password is wrong."
           : message,
       );
+    } finally {
+      setSubmitting(false);
     }
   }
   return (
-    <main className="mx-auto mt-24 max-w-sm panel">
-      <h1 className="mb-4 text-xl font-semibold">Log in to Tasklane</h1>
+    <AuthCard
+      title="Welcome back"
+      description="Sign in to return to your team's workspace."
+    >
       <form onSubmit={submit} className="space-y-3">
-        <input
-          className="input"
-          type="email"
-          placeholder="Email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-        />
-        <input
-          className="input"
-          type="password"
-          placeholder="Password"
+        <label className="block space-y-1 text-sm">
+          <span>Email</span>
+          <input
+            className="input"
+            type="email"
+            placeholder="Email"
+            autoComplete="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
+        </label>
+        <PasswordField
+          id="login-password"
+          label="Password"
+          autoComplete="current-password"
           value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
+          onChange={setPassword}
         />
         {err && (
           <p role="alert" className="text-sm text-warn">
             {err}
           </p>
         )}
-        <button className="btn w-full">Log in</button>
+        <button className="btn w-full" disabled={submitting}>
+          {submitting ? "Signing in…" : "Log in"}
+        </button>
       </form>
-      <p className="mt-3 text-sm">
+      <p className="text-sm">
         <Link className="underline" href="/forgot-password">
           Forgot password?
         </Link>
       </p>
-      <p className="mt-3 text-sm">
+      <p className="text-sm">
         New here?{" "}
         <Link className="underline" href="/register">
           Create an account
         </Link>
       </p>
-    </main>
+    </AuthCard>
   );
 }

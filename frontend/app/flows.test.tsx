@@ -18,10 +18,11 @@ vi.mock("@/lib/api", async (importOriginal) => {
 });
 
 import Login from "./login/page";
-import ProjectPage from "./projects/[id]/page";
+import ProjectPage from "./(app)/projects/[id]/page";
+import TaskPage from "./(app)/tasks/[id]/page";
 import NotificationsNavbar from "./components/NotificationsNavbar";
-import Dashboard from "./dashboard/page";
-import TaskPage from "./tasks/[id]/page";
+import AppShell from "./components/AppShell";
+import Dashboard from "./(app)/dashboard/page";
 
 class MockWebSocket {
   static instances: MockWebSocket[] = [];
@@ -57,6 +58,19 @@ function renderDashboard() {
   return render(
     <QueryClientProvider client={client}>
       <Dashboard />
+    </QueryClientProvider>,
+  );
+}
+
+function renderAppShell() {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  return render(
+    <QueryClientProvider client={client}>
+      <AppShell>
+        <main>Workspace content</main>
+      </AppShell>
     </QueryClientProvider>,
   );
 }
@@ -108,6 +122,51 @@ describe("frontend user flows", () => {
     });
     expect(localStorage.getItem("access")).toBe("access-token");
     expect(localStorage.getItem("refresh")).toBe("refresh-token");
+  });
+
+  it("shows password visibility toggle on the login form", () => {
+    render(<Login />);
+    const password = screen.getByPlaceholderText("Password");
+    expect(password).toHaveAttribute("type", "password");
+    fireEvent.click(screen.getByRole("button", { name: "Show password" }));
+    expect(password).toHaveAttribute("type", "text");
+    fireEvent.click(screen.getByRole("button", { name: "Hide password" }));
+    expect(password).toHaveAttribute("type", "password");
+  });
+
+  it("switches organizations from the authenticated top bar and displays roles", async () => {
+    localStorage.setItem("org", "2");
+    mocks.api.mockImplementation(async (endpoint: string) => {
+      if (endpoint === "/api/organizations/") {
+        return [
+          { id: 2, name: "Acme", role: "OWNER" },
+          { id: 3, name: "Studio", role: "VIEWER" },
+        ];
+      }
+      if (endpoint === "/api/auth/me/") {
+        return {
+          id: 5,
+          email: "owner@example.com",
+          display_name: "Avery",
+        };
+      }
+      throw new Error(`Unexpected API call: ${endpoint}`);
+    });
+    renderAppShell();
+
+    const switcher = screen.getByRole("button", {
+      name: "Organization switcher",
+    });
+    await waitFor(() => expect(switcher).toHaveTextContent("Acme"));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Organization switcher" }),
+    );
+    expect(
+      screen.getByRole("menuitem", { name: /Studio.*Viewer/ }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("menuitem", { name: /Studio.*Viewer/ }));
+
+    await waitFor(() => expect(localStorage.getItem("org")).toBe("3"));
   });
 
   it("creates a task in the current project", async () => {
