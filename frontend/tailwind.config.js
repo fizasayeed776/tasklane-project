@@ -15,6 +15,9 @@ module.exports = {
         success: "var(--success)",
       },
       borderRadius: { md: "8px", lg: "12px" },
+      boxShadow: {
+        modal: "0 12px 32px rgb(22 33 29 / 0.12)",
+      },
       fontFamily: {
         sans: ["var(--font-inter)", "ui-sans-serif", "sans-serif"],
         serif: ["var(--font-fraunces)", "Georgia", "serif"],
