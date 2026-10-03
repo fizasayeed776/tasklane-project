@@ -116,6 +116,27 @@ def test_project_search_ordering_and_filters_are_applied_after_tenant_scope(
         HTTP_X_ORGANIZATION_ID=str(project_world["other_org"].id),
     )
     assert response.json()["results"] == []
+    response = client.get("/api/projects/", HTTP_X_ORGANIZATION_ID="invalid")
+    assert response.json()["results"] == []
+
+
+def test_project_list_is_paginated_after_tenant_scoping(project_world):
+    Project.objects.bulk_create(
+        [
+            Project(
+                organization=project_world["org"],
+                name=f"Project {index}",
+                created_by=project_world["owner"],
+            )
+            for index in range(51)
+        ]
+    )
+
+    response = client_for(project_world["owner"]).get("/api/projects/?page=2")
+
+    assert response.status_code == 200
+    assert response.json()["count"] == 53
+    assert len(response.json()["results"]) == 3
 
 
 def test_project_detail_and_mutations_hide_foreign_tenant_objects(project_world):
@@ -172,6 +193,35 @@ def test_members_can_list_but_cannot_edit_projects(project_world):
     assert response.status_code == 403
     project_world["first"].refresh_from_db()
     assert project_world["first"].name == "Alpha"
+    assert (
+        client.delete(f"/api/projects/{project_world['first'].id}/").status_code == 403
+    )
+
+
+@pytest.mark.parametrize("role", ["MEMBER", "VIEWER"])
+def test_non_admin_cannot_create_update_or_delete_projects(project_world, role):
+    user = project_world[role.lower()]
+    client = client_for(user)
+
+    assert (
+        client.post(
+            "/api/projects/",
+            {"name": "Blocked", "organization_id": project_world["org"].id},
+            format="json",
+        ).status_code
+        == 403
+    )
+    assert (
+        client.patch(
+            f"/api/projects/{project_world['first'].id}/",
+            {"name": "Blocked"},
+            format="json",
+        ).status_code
+        == 403
+    )
+    assert (
+        client.delete(f"/api/projects/{project_world['first'].id}/").status_code == 403
+    )
 
 
 def test_project_lists_never_include_projects_from_other_organizations(project_world):

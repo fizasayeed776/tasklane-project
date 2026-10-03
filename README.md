@@ -51,7 +51,7 @@ The supported local installation path runs the complete stack with Docker Compos
    docker compose up --build -d
    ```
 
-   Compose waits for PostgreSQL and Redis healthchecks before starting the API, Celery worker, or Beat. PostgreSQL health is checked with the configured `POSTGRES_USER` and `POSTGRES_DB`; Redis health is checked with `redis-cli ping`. The backend applies committed database migrations before starting the ASGI server.
+   Compose waits for PostgreSQL and Redis healthchecks before starting the API, Celery worker, or Beat. PostgreSQL health is checked with the configured `POSTGRES_USER` and `POSTGRES_DB`; Redis health is checked with `redis-cli ping`. The backend applies committed database migrations and collects static assets before starting the ASGI server. Swagger UI assets are served locally through WhiteNoise and drf-spectacular-sidecar rather than loaded from a CDN.
 
    Check startup status with:
 
@@ -78,13 +78,13 @@ Each domain app follows the same separation:
 
 | App | Responsibility |
 | --- | --- |
-| `backend/apps/accounts/` | User model, registration, JWT endpoints, password changes and reset |
-| `backend/apps/organizations/` | Organizations, memberships, roles, invitations and organization selectors |
-| `backend/apps/projects/` | Project selectors, serializers and service-layer mutations |
-| `backend/apps/tasks/` | Tasks, comments, activity history, selectors, services and Celery jobs |
+| `backend/apps/accounts/` | User model, registration, JWT endpoints, password changes and reset, account permissions |
+| `backend/apps/organizations/` | Organizations, memberships, roles, invitations, selectors and role permissions |
+| `backend/apps/projects/` | Project selectors, serializers, role permissions and service-layer mutations |
+| `backend/apps/tasks/` | Tasks, comments, activity history, selectors, role permissions, services and Celery jobs |
 | `backend/apps/notifications/` | JWT-authenticated WebSocket notifications and Redis channel-layer publishing |
 
-Selectors own read/query behavior; services own business rules and writes; serializers define API input/output; views route requests and delegate. Authorization is centralized in `organizations.services.ensure_role` and `role_of`. Task activity is written in the task service layer rather than through model signals.
+Selectors own read/query behavior; services own business rules and writes; serializers define API input/output; DRF permission classes in each core app enforce request and object access, and views route requests and delegate. Organization-scoped permission classes use the central `organizations.services.ensure_role` helper, while `organizations.selectors.role_of` supplies membership-role lookups; service-layer checks remain as defense in depth for non-HTTP callers. Task activity is written in the task service layer rather than through model signals.
 
 The REST API is rooted at `/api/`:
 
@@ -238,6 +238,8 @@ Run backend checks in the Compose environment from the repository root:
 docker compose exec backend pytest
 docker compose exec backend ruff check .
 docker compose exec backend black --check .
+docker compose exec backend python manage.py makemigrations --check --dry-run
+docker compose exec backend python manage.py spectacular --validate
 ```
 
 Install frontend dependencies and run checks from `frontend/` (the frontend Docker image uses Node.js 20):
@@ -267,7 +269,7 @@ Backend tests enforce a minimum 80% coverage threshold. `pytest.ini` supplies a 
 
 ## Production scaling
 
-- To scale, run multiple stateless ASGI/API instances behind a proxy with WebSocket support, scale Celery workers separately from Beat (keep one Beat scheduler per environment), and use managed PostgreSQL/Redis with backups, monitoring, and connection limits. Configure trusted origins/hosts, TLS, secrets, email delivery, and database migrations as part of production operations.
+- Run multiple stateless ASGI/API instances behind a load balancer with WebSocket support, and scale Celery workers horizontally according to queue depth while running one Beat scheduler per environment. Use managed PostgreSQL with appropriate indexes, connection pooling, backups and read replicas for read-heavy traffic; keep Redis as the shared Celery broker and Channels layer. Add a shared cache for frequently read data, retain pagination and tenant-scoped queries, and tune API/auth rate limits at the application and edge. Configure trusted origins/hosts, TLS, secret rotation, email delivery, observability and backward-compatible database migrations as part of production operations.
 - See [DATABASE_SCHEMA.md](./DATABASE_SCHEMA.md) for the ER diagram and rationale for explicit and uniqueness indexes.
 
 ## Screenshots
@@ -285,6 +287,16 @@ Backend tests enforce a minimum 80% coverage threshold. `pytest.ini` supplies a 
 ![Account settings](docs/screenshots/06-settings.png)
 
 ![Member dashboard with project activity and organization members](docs/screenshots/07-member-page.png)
+
+### Demo walkthrough
+
+To record or manually verify the main flows:
+
+1. Sign in and show dashboard statistics and recent activity.
+2. Open a project, show the four-column Kanban board, filters, and moving a task between columns.
+3. Open a task to show its details, comments, and activity history.
+4. Switch organizations and show member roles and the member-management controls available to an owner/admin.
+5. Open <http://localhost:8000/api/docs/> for Swagger UI or <http://localhost:8000/api/schema/> for the OpenAPI document.
 
 ## Known limitations and next steps
 

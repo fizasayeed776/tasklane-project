@@ -1,6 +1,30 @@
+from django.http import JsonResponse
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import exception_handler
+
+
+def not_found(request, exception=None):
+    return JsonResponse(
+        {
+            "success": False,
+            "error": {
+                "code": "NOT_FOUND",
+                "message": "The requested resource was not found.",
+            },
+        },
+        status=404,
+    )
+
+
+def server_error(request):
+    return JsonResponse(
+        {
+            "success": False,
+            "error": {"code": "SERVER_ERROR", "message": "Unexpected error."},
+        },
+        status=500,
+    )
 
 
 def _first_message(value):

@@ -8,6 +8,7 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from apps.accounts.models import User
 
+from .selectors import role_of
 from .models import (
     Organization,
     OrganizationMember,
@@ -17,14 +18,6 @@ from .models import (
 
 R = OrganizationMember.Role
 RANK = {R.VIEWER: 0, R.MEMBER: 1, R.ADMIN: 2, R.OWNER: 3}
-
-
-def role_of(user, org_id):
-    return (
-        OrganizationMember.objects.filter(user=user, organization_id=org_id)
-        .values_list("role", flat=True)
-        .first()
-    )
 
 
 def ensure_role(user, org_id, minimum):

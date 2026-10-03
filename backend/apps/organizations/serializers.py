@@ -1,7 +1,7 @@
 from rest_framework import serializers
 
 from .models import Organization, OrganizationMember, PendingInvitation
-from .services import role_of
+from .selectors import role_of
 
 
 class ApiErrorDetailSerializer(serializers.Serializer):

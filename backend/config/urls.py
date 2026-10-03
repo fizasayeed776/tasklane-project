@@ -21,3 +21,6 @@ urlpatterns = [
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
     path("api/docs/", SpectacularSwaggerView.as_view(url_name="schema")),
 ]
+
+handler404 = "config.exceptions.not_found"
+handler500 = "config.exceptions.server_error"

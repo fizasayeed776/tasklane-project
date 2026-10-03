@@ -3,6 +3,7 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema_view, extend_s
 
 from . import services
 from .models import Project
+from .permissions import ProjectRolePermission
 from .selectors import projects_for_user
 from .serializers import ProjectSerializer
 
@@ -35,6 +36,7 @@ from .serializers import ProjectSerializer
 class ProjectViewSet(viewsets.ModelViewSet):
     queryset = Project.objects.none()
     serializer_class = ProjectSerializer
+    permission_classes = [ProjectRolePermission]
     filterset_fields = ["status", "organization"]
     search_fields = ["name", "description"]
     ordering_fields = ["created_at", "name"]

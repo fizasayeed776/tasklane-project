@@ -15,6 +15,11 @@ from apps.projects.selectors import projects_for_user
 
 from . import selectors, services
 from .models import Comment, Task
+from .permissions import (
+    CommentRolePermission,
+    OrganizationContextPermission,
+    TaskRolePermission,
+)
 from .serializers import ActivitySerializer, CommentSerializer, TaskSerializer
 
 
@@ -59,6 +64,7 @@ from .serializers import ActivitySerializer, CommentSerializer, TaskSerializer
 class TaskViewSet(viewsets.ModelViewSet):
     queryset = Task.objects.none()
     serializer_class = TaskSerializer
+    permission_classes = [TaskRolePermission]
     filterset_fields = ["status", "priority", "assigned_to", "project"]
     search_fields = ["title", "description"]
     ordering_fields = ["created_at", "due_date", "priority"]
@@ -128,6 +134,7 @@ class CommentViewSet(
 ):
     queryset = Comment.objects.none()
     serializer_class = CommentSerializer
+    permission_classes = [CommentRolePermission]
     http_method_names = ["patch", "delete"]
 
     def get_queryset(self):
@@ -143,6 +150,8 @@ class CommentViewSet(
 
 
 class ActivityView(APIView):
+    permission_classes = [OrganizationContextPermission]
+
     @extend_schema(
         parameters=[
             OpenApiParameter(
@@ -162,6 +171,8 @@ class ActivityView(APIView):
 
 
 class DashboardView(APIView):
+    permission_classes = [OrganizationContextPermission]
+
     @extend_schema(
         parameters=[
             OpenApiParameter(

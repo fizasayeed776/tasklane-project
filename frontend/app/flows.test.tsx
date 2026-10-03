@@ -473,7 +473,7 @@ describe("frontend user flows", () => {
     );
   });
 
-  it("rolls back a failed keyboard task move and shows a toast", async () => {
+  it("rolls back a failed drag-and-drop task move and shows a toast", async () => {
     const task = {
       id: 10,
       project: 1,
@@ -513,15 +513,25 @@ describe("frontend user flows", () => {
     );
     renderProjectPage();
 
-    const moveMenu = await screen.findByRole("combobox", {
-      name: "Move Prepare launch plan to",
+    const card = (await screen.findByText("Prepare launch plan")).closest(
+      "article",
+    );
+    expect(card).not.toBeNull();
+    const dataTransfer = {
+      setData: vi.fn(),
+      getData: vi.fn(() => "10"),
+    };
+    fireEvent.dragStart(card!, { dataTransfer });
+    fireEvent.drop(screen.getByLabelText("In progress tasks"), {
+      dataTransfer,
     });
-    fireEvent.change(moveMenu, { target: { value: "IN_PROGRESS" } });
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Couldn't move task. Reverted.",
     );
-    await waitFor(() => expect(moveMenu).toHaveValue("TODO"));
+    await waitFor(() =>
+      expect(screen.getByLabelText("To do tasks")).toContainElement(card),
+    );
     expect(mocks.api).toHaveBeenCalledWith("/api/tasks/10/", {
       method: "PATCH",
       json: { status: "IN_PROGRESS" },

@@ -2,7 +2,11 @@ from .models import Activity, Comment, Task
 
 
 def _scope(qs, org_id, field):
-    return qs.filter(**{field: org_id}) if org_id and str(org_id).isdigit() else qs
+    if org_id is None:
+        return qs
+    if not str(org_id).isdigit():
+        return qs.none()
+    return qs.filter(**{field: org_id})
 
 
 def tasks_for_user(user, org_id=None):

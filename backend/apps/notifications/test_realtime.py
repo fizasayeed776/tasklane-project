@@ -102,6 +102,24 @@ def test_websocket_rejects_missing_and_expired_jwt(websocket_headers):
     assert not connected
     assert code == 4401
 
+    valid_access = str(RefreshToken.for_user(user).access_token)
+    last_signature_character = valid_access[-1]
+    tampered_access = valid_access[:-1] + (
+        "a" if last_signature_character != "a" else "b"
+    )
+    tampered_path, tampered_protocols = websocket_path(
+        user, organization.id, tampered_access
+    )
+    tampered_token = WebsocketCommunicator(
+        application,
+        tampered_path,
+        headers=websocket_headers,
+        subprotocols=tampered_protocols,
+    )
+    connected, code = async_to_sync(tampered_token.connect)()
+    assert not connected
+    assert code == 4401
+
 
 @pytest.mark.django_db(transaction=True)
 @override_settings(

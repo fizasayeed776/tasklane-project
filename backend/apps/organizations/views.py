@@ -7,6 +7,7 @@ from apps.projects.serializers import ProjectSerializer
 
 from . import selectors, services
 from .models import Organization, PendingInvitation
+from .permissions import OrganizationRolePermission
 from .serializers import (
     InviteResultSerializer,
     InviteSerializer,
@@ -27,6 +28,7 @@ class OrganizationViewSet(
     queryset = Organization.objects.none()
     serializer_class = OrganizationSerializer
     pagination_class = None
+    permission_classes = [OrganizationRolePermission]
 
     def get_queryset(
         self,

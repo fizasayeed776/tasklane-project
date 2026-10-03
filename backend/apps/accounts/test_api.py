@@ -320,6 +320,7 @@ def test_account_settings_endpoints_require_authentication(path, payload):
 def test_forgot_password_is_non_enumerating_and_reset_token_is_single_use():
     client = APIClient()
     assert register(client).status_code == 201
+    existing_refresh = login(client).json()["refresh"]
 
     known = client.post(
         "/api/auth/password/forgot/",
@@ -349,6 +350,13 @@ def test_forgot_password_is_non_enumerating_and_reset_token_is_single_use():
     )
     assert reset.status_code == 200
     assert User.objects.get(email="user@example.com").check_password("ResetStrong!890")
+    revoked_refresh = client.post(
+        "/api/auth/refresh/",
+        {"refresh": existing_refresh},
+        format="json",
+    )
+    assert revoked_refresh.status_code == 401
+    assert revoked_refresh.json()["success"] is False
     assert (
         client.post(
             "/api/auth/password/reset/",
@@ -414,6 +422,16 @@ def test_invalid_and_expired_tokens_have_normalized_errors():
 
     assert register(client).status_code == 201
     tokens = login(client).json()
+    last_signature_character = tokens["access"][-1]
+    tampered_access = tokens["access"][:-1] + (
+        "a" if last_signature_character != "a" else "b"
+    )
+    tampered_response = APIClient().get(
+        "/api/dashboard/",
+        HTTP_AUTHORIZATION=f"Bearer {tampered_access}",
+    )
+    assert tampered_response.status_code == 401
+    assert tampered_response.json()["success"] is False
     from rest_framework_simplejwt.tokens import RefreshToken
 
     expired = RefreshToken(tokens["refresh"])

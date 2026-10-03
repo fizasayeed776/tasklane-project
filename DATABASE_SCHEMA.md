@@ -77,6 +77,15 @@ erDiagram
         string message
         datetime created_at
     }
+    NOTIFICATION_EVENT {
+        string id "transient event ID"
+        bigint organization_id "tenant scope"
+        bigint recipient_id "optional targeted user"
+        bigint task_id "related task"
+        string type
+        string message
+        datetime created_at
+    }
 
     USER ||--o{ ORGANIZATION : owns
     ORGANIZATION ||--o{ ORGANIZATION_MEMBER : has_members
@@ -93,9 +102,14 @@ erDiagram
     ORGANIZATION ||--o{ ACTIVITY : records
     TASK o|--o{ ACTIVITY : tracks
     USER o|--o{ ACTIVITY : acts
+    ORGANIZATION ||--o{ NOTIFICATION_EVENT : scopes
+    USER o|--o{ NOTIFICATION_EVENT : receives
+    TASK o|--o{ NOTIFICATION_EVENT : references
 ```
 
 `Activity.task_id` and `Activity.actor_id` are nullable: task history is removed with its task, while a deleted actor is retained as a null reference. `Task.assigned_to_id` is nullable and becomes null if the assignee is deleted. Created-by and organization-owner references use `PROTECT` so their source user cannot be removed while those records depend on it.
+
+`NOTIFICATION_EVENT` is a logical, transient Channels/Redis message envelope, not a persisted Django model or database table. Its shape follows `apps.notifications.services.publish_notification`; `recipient_id` is optional because organization broadcasts are delivered to member groups while assignment events can target one user.
 
 ## Indexes and constraints
 

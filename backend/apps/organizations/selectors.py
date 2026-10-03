@@ -17,3 +17,11 @@ def member_in_organization(org, member_id):
         organization=org,
         pk=member_id,
     )
+
+
+def role_of(user, org_id):
+    return (
+        OrganizationMember.objects.filter(user=user, organization_id=org_id)
+        .values_list("role", flat=True)
+        .first()
+    )

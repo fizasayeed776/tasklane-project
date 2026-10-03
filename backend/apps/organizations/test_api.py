@@ -52,6 +52,42 @@ def test_create_and_list_organizations_are_membership_scoped(org_world):
     assert {item["id"] for item in outsider_list.json()} == {org_world["other_org"].id}
 
 
+def test_user_can_belong_to_and_switch_between_multiple_organizations(org_world):
+    OrganizationMember.objects.create(
+        organization=org_world["other_org"],
+        user=org_world["owner"],
+        role=OrganizationMember.Role.VIEWER,
+    )
+    Project.objects.create(
+        organization=org_world["org"],
+        name="First tenant",
+        created_by=org_world["owner"],
+    )
+    Project.objects.create(
+        organization=org_world["other_org"],
+        name="Second tenant",
+        created_by=org_world["outsider"],
+    )
+    client = client_for(org_world["owner"])
+
+    organizations = client.get("/api/organizations/")
+    assert {item["id"] for item in organizations.json()} == {
+        org_world["org"].id,
+        org_world["other_org"].id,
+    }
+    for organization, visible_project in (
+        (org_world["org"], "First tenant"),
+        (org_world["other_org"], "Second tenant"),
+    ):
+        projects = client.get(
+            "/api/projects/",
+            HTTP_X_ORGANIZATION_ID=str(organization.id),
+        )
+        assert [item["name"] for item in projects.json()["results"]] == [
+            visible_project
+        ]
+
+
 def test_nonmember_cannot_retrieve_or_list_another_organizations_data(org_world):
     response = client_for(org_world["owner"]).get(
         f"/api/organizations/{org_world['other_org'].id}/"
@@ -338,6 +374,36 @@ def test_member_and_viewer_cannot_invite(org_world, role):
     ).exists()
 
 
+@pytest.mark.parametrize(
+    "role", [OrganizationMember.Role.MEMBER, OrganizationMember.Role.VIEWER]
+)
+def test_member_and_viewer_cannot_manage_organization_members(org_world, role):
+    actor = User.objects.create_user(
+        f"actor-{role.lower()}@example.com", "StrongPass!234"
+    )
+    target = User.objects.create_user(
+        f"target-{role.lower()}@example.com", "StrongPass!234"
+    )
+    OrganizationMember.objects.create(
+        organization=org_world["org"], user=actor, role=role
+    )
+    target_membership = OrganizationMember.objects.create(
+        organization=org_world["org"],
+        user=target,
+        role=OrganizationMember.Role.MEMBER,
+    )
+    client = client_for(actor)
+    path = f"/api/organizations/{org_world['org'].id}/members/{target_membership.id}/"
+
+    assert (
+        client.patch(
+            path, {"role": OrganizationMember.Role.VIEWER}, format="json"
+        ).status_code
+        == 403
+    )
+    assert client.delete(path).status_code == 403
+
+
 def test_owner_can_change_roles_but_cannot_manage_owner_membership(org_world):
     member = User.objects.create_user("member@example.com", "StrongPass!234")
     admin = User.objects.create_user("admin@example.com", "StrongPass!234")
@@ -518,8 +584,8 @@ def test_openapi_documents_member_mutation_security_and_error_responses():
     operations = schema["paths"]["/api/organizations/{id}/members/{member_id}/"]
 
     for method, expected_errors in (
-        ("patch", {"400", "401", "403", "404", "429"}),
-        ("delete", {"401", "403", "404", "429"}),
+        ("patch", {"400", "401", "403", "404", "405", "429"}),
+        ("delete", {"401", "403", "404", "405", "429"}),
     ):
         operation = operations[method]
         assert any("jwtAuth" in security for security in operation["security"])

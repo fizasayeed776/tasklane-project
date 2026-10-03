@@ -6,7 +6,8 @@ from django.db import transaction
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from apps.organizations.models import OrganizationMember as M
-from apps.organizations.services import ensure_role, role_of
+from apps.organizations.selectors import role_of
+from apps.organizations.services import ensure_role
 from apps.notifications.services import publish_notification
 
 from .jobs import send_assignment_email
