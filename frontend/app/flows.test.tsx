@@ -164,9 +164,21 @@ describe("frontend user flows", () => {
       name: "Organization switcher",
     });
     await waitFor(() => expect(switcher).toHaveTextContent("Acme"));
+    const organizationChevron = switcher.querySelector("svg");
+    expect(organizationChevron).toHaveAttribute("aria-hidden", "true");
+    expect(organizationChevron).toHaveAttribute("focusable", "false");
+    expect(organizationChevron).toHaveAttribute("width", "16");
+    expect(organizationChevron).toHaveAttribute("height", "16");
+    expect(organizationChevron).toHaveAttribute("stroke", "currentColor");
+    expect(organizationChevron).toHaveAttribute("stroke-width", "2");
+    expect(organizationChevron).toHaveClass(
+      "transition-transform",
+      "duration-150",
+    );
     fireEvent.click(
       screen.getByRole("button", { name: "Organization switcher" }),
     );
+    expect(organizationChevron).toHaveClass("rotate-180");
     expect(
       screen.getByRole("menuitem", { name: /Studio.*Viewer/ }),
     ).toBeInTheDocument();

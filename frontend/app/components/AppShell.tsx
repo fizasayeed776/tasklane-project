@@ -18,6 +18,28 @@ function roleLabel(role: Org["role"]) {
   return role.charAt(0) + role.slice(1).toLowerCase();
 }
 
+function ChevronDown({ open }: { open: boolean }) {
+  return (
+    <svg
+      aria-hidden="true"
+      focusable="false"
+      viewBox="0 0 24 24"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={`size-4 shrink-0 transition-transform duration-150 ${
+        open ? "rotate-180" : ""
+      }`}
+    >
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  );
+}
+
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -137,7 +159,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                   {roleLabel(currentOrg.role)}
                 </span>
               )}
-              <span aria-hidden="true">⌄</span>
+              <ChevronDown open={organizationMenuOpen} />
             </button>
             {organizationMenuOpen && (
               <div
@@ -182,7 +204,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             <button
               ref={userButtonRef}
               type="button"
-              className="min-h-10 rounded-md px-3 text-sm hover:bg-accent-soft"
+              className="flex min-h-10 items-center gap-2 rounded-md px-3 text-sm hover:bg-accent-soft"
               aria-expanded={openDropdown === "user"}
               aria-controls="user-menu"
               aria-label="User menu"
@@ -198,6 +220,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               <span className="sm:hidden" aria-hidden="true">
                 {displayName?.slice(0, 1).toUpperCase() ?? "A"}
               </span>
+              <ChevronDown open={openDropdown === "user"} />
             </button>
             {openDropdown === "user" && (
               <div
