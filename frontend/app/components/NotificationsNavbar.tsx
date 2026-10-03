@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type RefObject } from "react";
 
 import { refreshSession } from "@/lib/api";
 import { relativeTime } from "@/lib/format";
@@ -19,6 +19,13 @@ type Session = { access: string; organization: string };
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
+type NotificationsNavbarProps = {
+  open: boolean;
+  onToggle: () => void;
+  onClose: () => void;
+  buttonRef: RefObject<HTMLButtonElement>;
+};
+
 function readSession(): Session {
   return {
     access: localStorage.getItem("access") ?? "",
@@ -26,14 +33,18 @@ function readSession(): Session {
   };
 }
 
-export default function NotificationsNavbar() {
+export default function NotificationsNavbar({
+  open,
+  onToggle,
+  onClose,
+  buttonRef,
+}: NotificationsNavbarProps) {
   const [session, setSession] = useState<Session>({
     access: "",
     organization: "",
   });
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [readIds, setReadIds] = useState<Set<string>>(() => new Set());
-  const [open, setOpen] = useState(false);
   const [connectionError, setConnectionError] = useState(false);
 
   useEffect(() => {
@@ -123,12 +134,13 @@ export default function NotificationsNavbar() {
     <div className="relative flex items-center">
       {session.organization && (
         <button
+          ref={buttonRef}
           type="button"
           className="relative grid size-10 place-items-center rounded-md text-sm hover:bg-accent-soft"
           aria-expanded={open}
           aria-controls="recent-notifications"
           aria-label={`Notifications${unreadCount ? ` (${unreadCount} unread)` : ""}${connectionError ? " disconnected" : ""}`}
-          onClick={() => setOpen((value) => !value)}
+          onClick={onToggle}
         >
           <svg
             aria-hidden="true"
@@ -173,7 +185,7 @@ export default function NotificationsNavbar() {
                         setReadIds((current) =>
                           new Set(current).add(notification.id),
                         );
-                        setOpen(false);
+                        onClose();
                       }}
                     >
                       {notification.message}
