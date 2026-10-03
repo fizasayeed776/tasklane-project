@@ -1,8 +1,3 @@
-from django.conf import settings
-from django.contrib.auth.tokens import default_token_generator
-from django.core.mail import send_mail
-from django.utils.encoding import force_bytes, force_str
-from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 from rest_framework import generics, status
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import AllowAny
@@ -13,10 +8,8 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from drf_spectacular.utils import extend_schema
 
-from apps.organizations.services import accept_pending_invitations
-
 from . import services
-from .models import User
+from .permissions import IsAuthenticatedAccountUser
 from .serializers import (
     AuthApiErrorSerializer,
     ChangeEmailSerializer,
@@ -48,11 +41,7 @@ class LoginView(ThrottledMixin, TokenObtainPairView):
     def post(self, request, *args, **kwargs):
         response = super().post(request, *args, **kwargs)
         if response.status_code == status.HTTP_200_OK:
-            user = User.objects.filter(
-                email__iexact=request.data.get("email", "")
-            ).first()
-            if user:
-                accept_pending_invitations(user)
+            services.accept_invitations_after_login(request.data.get("email", ""))
         return response
 
 
@@ -61,6 +50,8 @@ class RefreshView(ThrottledMixin, TokenRefreshView):
 
 
 class LogoutView(ThrottledMixin, APIView):
+    permission_classes = [IsAuthenticatedAccountUser]
+
     @extend_schema(request=LogoutSerializer, responses={204: None})
     def post(self, request):
         try:
@@ -72,12 +63,15 @@ class LogoutView(ThrottledMixin, APIView):
 
 class MeView(generics.RetrieveUpdateAPIView):
     serializer_class = UserSerializer
+    permission_classes = [IsAuthenticatedAccountUser]
 
     def get_object(self):
         return self.request.user
 
 
 class ChangePasswordView(ThrottledMixin, APIView):
+    permission_classes = [IsAuthenticatedAccountUser]
+
     @extend_schema(
         summary="Change the authenticated user's password",
         description=(
@@ -105,6 +99,8 @@ class ChangePasswordView(ThrottledMixin, APIView):
 
 
 class ChangeEmailView(ThrottledMixin, APIView):
+    permission_classes = [IsAuthenticatedAccountUser]
+
     @extend_schema(
         summary="Change the authenticated user's email",
         description=(
@@ -139,14 +135,7 @@ class ForgotPasswordView(ThrottledMixin, APIView):
     def post(self, request):
         s = ForgotSerializer(data=request.data)
         s.is_valid(raise_exception=True)
-        user = User.objects.filter(email__iexact=s.validated_data["email"]).first()
-        if user:
-            uid = urlsafe_base64_encode(force_bytes(user.pk))
-            token = default_token_generator.make_token(user)
-            link = f"{settings.FRONTEND_URL}/reset-password?uid={uid}&token={token}"
-            send_mail(
-                "Reset your password", link, settings.DEFAULT_FROM_EMAIL, [user.email]
-            )
+        services.send_password_reset(s.validated_data["email"])
         return Response(
             {"success": True}
         )  # same answer either way: no account enumeration
@@ -160,14 +149,9 @@ class ResetPasswordView(ThrottledMixin, APIView):
     def post(self, request):
         s = ResetSerializer(data=request.data)
         s.is_valid(raise_exception=True)
-        try:
-            user = User.objects.get(
-                pk=force_str(urlsafe_base64_decode(s.validated_data["uid"]))
-            )
-        except (User.DoesNotExist, ValueError, TypeError):
-            raise ValidationError("Invalid reset link.")
-        if not default_token_generator.check_token(user, s.validated_data["token"]):
-            raise ValidationError("Invalid or expired reset link.")
-        user.set_password(s.validated_data["new_password"])
-        user.save()
+        services.reset_password_with_token(
+            s.validated_data["uid"],
+            s.validated_data["token"],
+            s.validated_data["new_password"],
+        )
         return Response({"success": True})
