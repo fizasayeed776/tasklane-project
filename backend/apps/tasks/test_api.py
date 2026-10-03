@@ -59,6 +59,28 @@ def test_viewer_cannot_create_task(world):
     assert r.status_code == 403
 
 
+def test_viewer_cannot_mutate_tasks_or_add_comments(world):
+    viewer = User.objects.create_user("viewer@x.com", "Passw0rd!x")
+    OrganizationMember.objects.create(
+        organization=world["org_a"],
+        user=viewer,
+        role=OrganizationMember.Role.VIEWER,
+    )
+    task = Task.objects.create(
+        project=world["proj_a"], title="Read only", created_by=world["a"]
+    )
+    client = as_user(viewer)
+
+    assert (
+        client.patch(f"/api/tasks/{task.id}/", {"title": "Changed"}).status_code == 403
+    )
+    assert client.delete(f"/api/tasks/{task.id}/").status_code == 403
+    assert (
+        client.post(f"/api/tasks/{task.id}/comments/", {"content": "No"}).status_code
+        == 403
+    )
+
+
 def test_status_change_logs_activity(world):
     c = as_user(world["a"])
     t = c.post("/api/tasks/", {"project": world["proj_a"].id, "title": "t"}).json()
@@ -311,17 +333,32 @@ def test_task_status_priority_assignment_logs_and_admin_delete(monkeypatch):
     assert response.status_code == 200
     assert response.json()["status"] == "DONE"
     assert response.json()["priority"] == "URGENT"
-    verbs = set(Activity.objects.filter(task_id=task_id).values_list("verb", flat=True))
+    comment = client.post(f"/api/tasks/{task_id}/comments/", {"content": "Looks good."})
+    assert comment.status_code == 201
+    events = dict(
+        Activity.objects.filter(task_id=task_id).values_list("verb", "message")
+    )
     assert {
         "task_created",
         "task_assigned",
         "status_changed",
         "task_completed",
         "priority_changed",
-    } <= verbs
+        "comment_added",
+    } <= events.keys()
+    assert events["status_changed"] == (
+        "owner@x.com changed task status from TODO to DONE."
+    )
+    assert events["comment_added"] == 'owner@x.com commented on "Work".'
     assert sent == [task_id]
     assert client.delete(f"/api/tasks/{task_id}/").status_code == 204
     assert not Task.objects.filter(pk=task_id).exists()
+
+
+def test_overdue_job_is_scheduled_hourly(settings):
+    schedule = settings.CELERY_BEAT_SCHEDULE["overdue-check"]
+    assert schedule["task"] == "apps.tasks.jobs.flag_overdue_tasks"
+    assert schedule["schedule"] == 3600.0
 
 
 def test_task_comment_and_activity_reads_and_dashboard_statistics(world):
@@ -360,13 +397,15 @@ def test_task_comment_and_activity_reads_and_dashboard_statistics(world):
         "overdue": 1,
     }
     assert done.status == Task.Status.DONE
-    assert (
-        client.get(
-            "/api/dashboard/",
-            HTTP_X_ORGANIZATION_ID=str(world["org_b"].id),
-        ).json()["total_tasks"]
-        == 0
+    foreign_org = client.get(
+        "/api/dashboard/",
+        HTTP_X_ORGANIZATION_ID=str(world["org_b"].id),
     )
+    assert foreign_org.status_code == 200
+    assert foreign_org.json()["total_tasks"] == 0
+    invalid_org = client.get("/api/dashboard/", HTTP_X_ORGANIZATION_ID="invalid")
+    assert invalid_org.status_code == 200
+    assert invalid_org.json()["total_tasks"] == 0
 
 
 @pytest.mark.django_db(transaction=True)
