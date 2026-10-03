@@ -12,6 +12,7 @@ vi.mock("@/lib/api", async (importOriginal) => {
 });
 
 import SettingsPage from "./(app)/settings/SettingsClient";
+import { ToastProvider } from "./components/ToastProvider";
 
 function renderSettingsPage() {
   const client = new QueryClient({
@@ -22,7 +23,9 @@ function renderSettingsPage() {
   });
   const result = render(
     <QueryClientProvider client={client}>
-      <SettingsPage />
+      <ToastProvider>
+        <SettingsPage />
+      </ToastProvider>
     </QueryClientProvider>,
   );
   return { ...result, client };
@@ -31,6 +34,12 @@ function renderSettingsPage() {
 describe("account settings", () => {
   beforeEach(() => {
     mocks.api.mockReset();
+    // Default: /api/organizations/ returns empty list so the danger zone is hidden
+    // and mutation tests can override with mockImplementation or mockResolvedValue.
+    mocks.api.mockImplementation(async (endpoint: string) => {
+      if (endpoint === "/api/organizations/") return [];
+      throw new Error(`Unexpected API call in settings test: ${endpoint}`);
+    });
   });
 
   it("renders the password and email forms", () => {
@@ -47,11 +56,21 @@ describe("account settings", () => {
   });
 
   it("stores the returned session after a successful password change", async () => {
-    mocks.api.mockResolvedValue({
-      success: true,
-      access: "new-access",
-      refresh: "new-refresh",
-    });
+    mocks.api.mockImplementation(
+      async (endpoint: string, init?: RequestInit & { json?: unknown }) => {
+        if (endpoint === "/api/organizations/") return [];
+        if (
+          endpoint === "/api/auth/password/change/" &&
+          init?.method === "POST"
+        )
+          return {
+            success: true,
+            access: "new-access",
+            refresh: "new-refresh",
+          };
+        throw new Error(`Unexpected API call: ${endpoint}`);
+      },
+    );
     renderSettingsPage();
 
     fireEvent.change(screen.getAllByLabelText("Current password")[0], {
@@ -82,8 +101,13 @@ describe("account settings", () => {
   });
 
   it("shows a server error after a failed email change", async () => {
-    mocks.api.mockRejectedValue(
-      new Error("A user with this email already exists."),
+    mocks.api.mockImplementation(
+      async (endpoint: string, init?: RequestInit & { json?: unknown }) => {
+        if (endpoint === "/api/organizations/") return [];
+        if (endpoint === "/api/auth/email/change/" && init?.method === "POST")
+          throw new Error("A user with this email already exists.");
+        throw new Error(`Unexpected API call: ${endpoint}`);
+      },
     );
     renderSettingsPage();
 
@@ -103,7 +127,14 @@ describe("account settings", () => {
   });
 
   it("refreshes the cached current-user query after a successful email change", async () => {
-    mocks.api.mockResolvedValue({ success: true });
+    mocks.api.mockImplementation(
+      async (endpoint: string, init?: RequestInit & { json?: unknown }) => {
+        if (endpoint === "/api/organizations/") return [];
+        if (endpoint === "/api/auth/email/change/" && init?.method === "POST")
+          return { success: true };
+        throw new Error(`Unexpected API call: ${endpoint}`);
+      },
+    );
     const { client } = renderSettingsPage();
     client.setQueryData(["me"], { email: "old@example.com" });
 

@@ -6,7 +6,13 @@
  *  - Role-based visibility
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -61,30 +67,45 @@ function renderSettings() {
 
 /** Standard org list for an owner. Members list has owner + one member. */
 function mockOwnerDashboard(extraApiMocks: Record<string, unknown> = {}) {
-  mocks.api.mockImplementation(async (endpoint: string, init?: RequestInit & { json?: unknown }) => {
-    if (endpoint === "/api/organizations/") {
-      return [{ id: 2, name: "Acme Corp", role: "OWNER" }];
-    }
-    if (endpoint === "/api/organizations/2/members/") {
-      return [
-        { id: 10, user_id: 1, email: "owner@example.com", name: "Owner", role: "OWNER" },
-        { id: 11, user_id: 5, email: "alice@example.com", name: "Alice", role: "MEMBER" },
-      ];
-    }
-    if (endpoint === "/api/dashboard/") return {};
-    if (endpoint === "/api/projects/?ordering=-created_at") return { results: [] };
-    if (endpoint === "/api/activity/") return [];
-    // Allow any extra mocked endpoints to override
-    for (const [pattern, result] of Object.entries(extraApiMocks)) {
-      if (endpoint === pattern) {
-        if (init) {
-          // mutation — may be overridden by caller
-        }
-        return result;
+  mocks.api.mockImplementation(
+    async (endpoint: string, init?: RequestInit & { json?: unknown }) => {
+      if (endpoint === "/api/organizations/") {
+        return [{ id: 2, name: "Acme Corp", role: "OWNER" }];
       }
-    }
-    throw new Error(`Unexpected API call: ${endpoint}`);
-  });
+      if (endpoint === "/api/organizations/2/members/") {
+        return [
+          {
+            id: 10,
+            user_id: 1,
+            email: "owner@example.com",
+            name: "Owner",
+            role: "OWNER",
+          },
+          {
+            id: 11,
+            user_id: 5,
+            email: "alice@example.com",
+            name: "Alice",
+            role: "MEMBER",
+          },
+        ];
+      }
+      if (endpoint === "/api/dashboard/") return {};
+      if (endpoint === "/api/projects/?ordering=-created_at")
+        return { results: [] };
+      if (endpoint === "/api/activity/") return [];
+      // Allow any extra mocked endpoints to override
+      for (const [pattern, result] of Object.entries(extraApiMocks)) {
+        if (endpoint === pattern) {
+          if (init) {
+            // mutation — may be overridden by caller
+          }
+          return result;
+        }
+      }
+      throw new Error(`Unexpected API call: ${endpoint}`);
+    },
+  );
 }
 
 function mockMemberDashboard() {
@@ -94,12 +115,25 @@ function mockMemberDashboard() {
     }
     if (endpoint === "/api/organizations/2/members/") {
       return [
-        { id: 10, user_id: 1, email: "owner@example.com", name: "Owner", role: "OWNER" },
-        { id: 11, user_id: 5, email: "alice@example.com", name: "Alice", role: "MEMBER" },
+        {
+          id: 10,
+          user_id: 1,
+          email: "owner@example.com",
+          name: "Owner",
+          role: "OWNER",
+        },
+        {
+          id: 11,
+          user_id: 5,
+          email: "alice@example.com",
+          name: "Alice",
+          role: "MEMBER",
+        },
       ];
     }
     if (endpoint === "/api/dashboard/") return {};
-    if (endpoint === "/api/projects/?ordering=-created_at") return { results: [] };
+    if (endpoint === "/api/projects/?ordering=-created_at")
+      return { results: [] };
     if (endpoint === "/api/activity/") return [];
     throw new Error(`Unexpected API call: ${endpoint}`);
   });
@@ -173,11 +207,24 @@ describe("role-based visibility", () => {
           return [{ id: 2, name: "Acme Corp", role }];
         if (endpoint === "/api/organizations/2/members/")
           return [
-            { id: 10, user_id: 1, email: "owner@example.com", name: "Owner", role: "OWNER" },
-            { id: 11, user_id: 5, email: "alice@example.com", name: "Alice", role: "MEMBER" },
+            {
+              id: 10,
+              user_id: 1,
+              email: "owner@example.com",
+              name: "Owner",
+              role: "OWNER",
+            },
+            {
+              id: 11,
+              user_id: 5,
+              email: "alice@example.com",
+              name: "Alice",
+              role: "MEMBER",
+            },
           ];
         if (endpoint === "/api/dashboard/") return {};
-        if (endpoint === "/api/projects/?ordering=-created_at") return { results: [] };
+        if (endpoint === "/api/projects/?ordering=-created_at")
+          return { results: [] };
         if (endpoint === "/api/activity/") return [];
         throw new Error(`Unexpected: ${endpoint}`);
       });
@@ -207,7 +254,9 @@ describe("transfer ownership", () => {
     renderDashboard();
 
     fireEvent.click(
-      await screen.findByRole("button", { name: "Transfer ownership to Alice" }),
+      await screen.findByRole("button", {
+        name: "Transfer ownership to Alice",
+      }),
     );
 
     expect(
@@ -223,14 +272,16 @@ describe("transfer ownership", () => {
     renderDashboard();
 
     fireEvent.click(
-      await screen.findByRole("button", { name: "Transfer ownership to Alice" }),
+      await screen.findByRole("button", {
+        name: "Transfer ownership to Alice",
+      }),
     );
-    await screen.findByRole("alertdialog", { name: "Transfer ownership to Alice?" });
+    await screen.findByRole("alertdialog", {
+      name: "Transfer ownership to Alice?",
+    });
 
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-    expect(
-      screen.queryByRole("alertdialog"),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
     expect(mocks.api).not.toHaveBeenCalledWith(
       expect.stringContaining("transfer-ownership"),
       expect.anything(),
@@ -244,11 +295,24 @@ describe("transfer ownership", () => {
           return [{ id: 2, name: "Acme Corp", role: "OWNER" }];
         if (endpoint === "/api/organizations/2/members/")
           return [
-            { id: 10, user_id: 1, email: "owner@example.com", name: "Owner", role: "OWNER" },
-            { id: 11, user_id: 5, email: "alice@example.com", name: "Alice", role: "MEMBER" },
+            {
+              id: 10,
+              user_id: 1,
+              email: "owner@example.com",
+              name: "Owner",
+              role: "OWNER",
+            },
+            {
+              id: 11,
+              user_id: 5,
+              email: "alice@example.com",
+              name: "Alice",
+              role: "MEMBER",
+            },
           ];
         if (endpoint === "/api/dashboard/") return {};
-        if (endpoint === "/api/projects/?ordering=-created_at") return { results: [] };
+        if (endpoint === "/api/projects/?ordering=-created_at")
+          return { results: [] };
         if (endpoint === "/api/activity/") return [];
         if (
           endpoint === "/api/organizations/2/transfer-ownership/" &&
@@ -262,9 +326,13 @@ describe("transfer ownership", () => {
     renderDashboard();
 
     fireEvent.click(
-      await screen.findByRole("button", { name: "Transfer ownership to Alice" }),
+      await screen.findByRole("button", {
+        name: "Transfer ownership to Alice",
+      }),
     );
-    await screen.findByRole("alertdialog", { name: "Transfer ownership to Alice?" });
+    await screen.findByRole("alertdialog", {
+      name: "Transfer ownership to Alice?",
+    });
     fireEvent.click(screen.getByRole("button", { name: "Transfer ownership" }));
 
     await waitFor(() =>
@@ -286,11 +354,24 @@ describe("transfer ownership", () => {
           return [{ id: 2, name: "Acme Corp", role: "OWNER" }];
         if (endpoint === "/api/organizations/2/members/")
           return [
-            { id: 10, user_id: 1, email: "owner@example.com", name: "Owner", role: "OWNER" },
-            { id: 11, user_id: 5, email: "alice@example.com", name: "Alice", role: "MEMBER" },
+            {
+              id: 10,
+              user_id: 1,
+              email: "owner@example.com",
+              name: "Owner",
+              role: "OWNER",
+            },
+            {
+              id: 11,
+              user_id: 5,
+              email: "alice@example.com",
+              name: "Alice",
+              role: "MEMBER",
+            },
           ];
         if (endpoint === "/api/dashboard/") return {};
-        if (endpoint === "/api/projects/?ordering=-created_at") return { results: [] };
+        if (endpoint === "/api/projects/?ordering=-created_at")
+          return { results: [] };
         if (endpoint === "/api/activity/") return [];
         if (
           endpoint === "/api/organizations/2/transfer-ownership/" &&
@@ -304,7 +385,9 @@ describe("transfer ownership", () => {
     renderDashboard();
 
     fireEvent.click(
-      await screen.findByRole("button", { name: "Transfer ownership to Alice" }),
+      await screen.findByRole("button", {
+        name: "Transfer ownership to Alice",
+      }),
     );
     await screen.findByRole("alertdialog");
     fireEvent.click(screen.getByRole("button", { name: "Transfer ownership" }));
@@ -332,7 +415,9 @@ describe("leave organization", () => {
     mockMemberDashboard();
     renderDashboard();
 
-    fireEvent.click(await screen.findByRole("button", { name: "Leave organization" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Leave organization" }),
+    );
 
     expect(
       await screen.findByRole("alertdialog", { name: "Leave Acme Corp?" }),
@@ -344,7 +429,9 @@ describe("leave organization", () => {
     mockMemberDashboard();
     renderDashboard();
 
-    fireEvent.click(await screen.findByRole("button", { name: "Leave organization" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Leave organization" }),
+    );
     await screen.findByRole("alertdialog");
 
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
@@ -367,22 +454,42 @@ describe("leave organization", () => {
         }
         if (endpoint === "/api/organizations/2/members/")
           return [
-            { id: 10, user_id: 1, email: "owner@example.com", name: "Owner", role: "OWNER" },
-            { id: 11, user_id: 5, email: "alice@example.com", name: "Alice", role: "MEMBER" },
+            {
+              id: 10,
+              user_id: 1,
+              email: "owner@example.com",
+              name: "Owner",
+              role: "OWNER",
+            },
+            {
+              id: 11,
+              user_id: 5,
+              email: "alice@example.com",
+              name: "Alice",
+              role: "MEMBER",
+            },
           ];
         if (endpoint === "/api/dashboard/") return {};
-        if (endpoint === "/api/projects/?ordering=-created_at") return { results: [] };
+        if (endpoint === "/api/projects/?ordering=-created_at")
+          return { results: [] };
         if (endpoint === "/api/activity/") return [];
-        if (endpoint === "/api/organizations/2/leave/" && init?.method === "POST")
+        if (
+          endpoint === "/api/organizations/2/leave/" &&
+          init?.method === "POST"
+        )
           return undefined;
         throw new Error(`Unexpected: ${endpoint}`);
       },
     );
     renderDashboard();
 
-    fireEvent.click(await screen.findByRole("button", { name: "Leave organization" }));
-    await screen.findByRole("alertdialog");
-    fireEvent.click(screen.getByRole("button", { name: "Leave organization" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Leave organization" }),
+    );
+    const leaveDialog1 = await screen.findByRole("alertdialog");
+    fireEvent.click(
+      within(leaveDialog1).getByRole("button", { name: "Leave organization" }),
+    );
 
     await waitFor(() =>
       expect(mocks.api).toHaveBeenCalledWith("/api/organizations/2/leave/", {
@@ -401,9 +508,13 @@ describe("leave organization", () => {
           return [{ id: 2, name: "Acme Corp", role: "MEMBER" }];
         if (endpoint === "/api/organizations/2/members/") return [];
         if (endpoint === "/api/dashboard/") return {};
-        if (endpoint === "/api/projects/?ordering=-created_at") return { results: [] };
+        if (endpoint === "/api/projects/?ordering=-created_at")
+          return { results: [] };
         if (endpoint === "/api/activity/") return [];
-        if (endpoint === "/api/organizations/2/leave/" && init?.method === "POST")
+        if (
+          endpoint === "/api/organizations/2/leave/" &&
+          init?.method === "POST"
+        )
           throw new Error(
             "The organization owner cannot leave. Transfer ownership to another member first.",
           );
@@ -412,9 +523,13 @@ describe("leave organization", () => {
     );
     renderDashboard();
 
-    fireEvent.click(await screen.findByRole("button", { name: "Leave organization" }));
-    await screen.findByRole("alertdialog");
-    fireEvent.click(screen.getByRole("button", { name: "Leave organization" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Leave organization" }),
+    );
+    const leaveDialog2 = await screen.findByRole("alertdialog");
+    fireEvent.click(
+      within(leaveDialog2).getByRole("button", { name: "Leave organization" }),
+    );
 
     expect(
       await screen.findByText(/Transfer ownership to another member first/i),
@@ -437,7 +552,9 @@ describe("delete organization", () => {
     mockOwnerDashboard();
     renderDashboard();
 
-    fireEvent.click(await screen.findByRole("button", { name: "Delete organization" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Delete organization" }),
+    );
 
     expect(
       await screen.findByRole("alertdialog", { name: "Delete Acme Corp?" }),
@@ -451,10 +568,15 @@ describe("delete organization", () => {
     mockOwnerDashboard();
     renderDashboard();
 
-    fireEvent.click(await screen.findByRole("button", { name: "Delete organization" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Delete organization" }),
+    );
     await screen.findByRole("alertdialog");
 
-    const deleteBtn = screen.getByRole("button", { name: "Delete organization" });
+    const deleteBtn = within(screen.getByRole("alertdialog")).getByRole(
+      "button",
+      { name: "Delete organization" },
+    );
     expect(deleteBtn).toBeDisabled();
 
     fireEvent.change(screen.getByLabelText("Organization name confirmation"), {
@@ -472,7 +594,9 @@ describe("delete organization", () => {
     mockOwnerDashboard();
     renderDashboard();
 
-    fireEvent.click(await screen.findByRole("button", { name: "Delete organization" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Delete organization" }),
+    );
     await screen.findByRole("alertdialog");
 
     fireEvent.click(screen.getAllByRole("button", { name: "Cancel" })[0]);
@@ -490,11 +614,24 @@ describe("delete organization", () => {
           return [{ id: 2, name: "Acme Corp", role: "OWNER" }];
         if (endpoint === "/api/organizations/2/members/")
           return [
-            { id: 10, user_id: 1, email: "owner@example.com", name: "Owner", role: "OWNER" },
-            { id: 11, user_id: 5, email: "alice@example.com", name: "Alice", role: "MEMBER" },
+            {
+              id: 10,
+              user_id: 1,
+              email: "owner@example.com",
+              name: "Owner",
+              role: "OWNER",
+            },
+            {
+              id: 11,
+              user_id: 5,
+              email: "alice@example.com",
+              name: "Alice",
+              role: "MEMBER",
+            },
           ];
         if (endpoint === "/api/dashboard/") return {};
-        if (endpoint === "/api/projects/?ordering=-created_at") return { results: [] };
+        if (endpoint === "/api/projects/?ordering=-created_at")
+          return { results: [] };
         if (endpoint === "/api/activity/") return [];
         if (endpoint === "/api/organizations/2/" && init?.method === "DELETE")
           return undefined;
@@ -503,13 +640,19 @@ describe("delete organization", () => {
     );
     renderDashboard();
 
-    fireEvent.click(await screen.findByRole("button", { name: "Delete organization" }));
-    await screen.findByRole("alertdialog");
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Delete organization" }),
+    );
+    const deleteDialog1 = await screen.findByRole("alertdialog");
 
     fireEvent.change(screen.getByLabelText("Organization name confirmation"), {
       target: { value: "Acme Corp" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Delete organization" }));
+    fireEvent.click(
+      within(deleteDialog1).getByRole("button", {
+        name: "Delete organization",
+      }),
+    );
 
     await waitFor(() =>
       expect(mocks.api).toHaveBeenCalledWith("/api/organizations/2/", {
@@ -529,10 +672,17 @@ describe("delete organization", () => {
           return [{ id: 2, name: "Acme Corp", role: "OWNER" }];
         if (endpoint === "/api/organizations/2/members/")
           return [
-            { id: 10, user_id: 1, email: "owner@example.com", name: "Owner", role: "OWNER" },
+            {
+              id: 10,
+              user_id: 1,
+              email: "owner@example.com",
+              name: "Owner",
+              role: "OWNER",
+            },
           ];
         if (endpoint === "/api/dashboard/") return {};
-        if (endpoint === "/api/projects/?ordering=-created_at") return { results: [] };
+        if (endpoint === "/api/projects/?ordering=-created_at")
+          return { results: [] };
         if (endpoint === "/api/activity/") return [];
         if (endpoint === "/api/organizations/2/" && init?.method === "DELETE")
           throw new Error("The name you entered does not match.");
@@ -541,13 +691,19 @@ describe("delete organization", () => {
     );
     renderDashboard();
 
-    fireEvent.click(await screen.findByRole("button", { name: "Delete organization" }));
-    await screen.findByRole("alertdialog");
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Delete organization" }),
+    );
+    const deleteDialog2 = await screen.findByRole("alertdialog");
 
     fireEvent.change(screen.getByLabelText("Organization name confirmation"), {
       target: { value: "Acme Corp" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Delete organization" }));
+    fireEvent.click(
+      within(deleteDialog2).getByRole("button", {
+        name: "Delete organization",
+      }),
+    );
 
     expect(
       await screen.findByText("The name you entered does not match."),
@@ -572,7 +728,8 @@ describe("settings page danger zone", () => {
     mocks.api.mockImplementation(async (endpoint: string) => {
       if (endpoint === "/api/organizations/")
         return [{ id: 2, name: "Acme Corp", role: "OWNER" }];
-      if (endpoint === "/api/auth/me/") return { id: 1, email: "owner@example.com" };
+      if (endpoint === "/api/auth/me/")
+        return { id: 1, email: "owner@example.com" };
       throw new Error(`Unexpected: ${endpoint}`);
     });
     renderSettings();
@@ -589,7 +746,8 @@ describe("settings page danger zone", () => {
     mocks.api.mockImplementation(async (endpoint: string) => {
       if (endpoint === "/api/organizations/")
         return [{ id: 2, name: "Acme Corp", role: "MEMBER" }];
-      if (endpoint === "/api/auth/me/") return { id: 1, email: "member@example.com" };
+      if (endpoint === "/api/auth/me/")
+        return { id: 1, email: "member@example.com" };
       throw new Error(`Unexpected: ${endpoint}`);
     });
     renderSettings();
@@ -607,17 +765,29 @@ describe("settings page danger zone", () => {
       async (endpoint: string, init?: RequestInit & { json?: unknown }) => {
         if (endpoint === "/api/organizations/")
           return [{ id: 2, name: "Acme Corp", role: "MEMBER" }];
-        if (endpoint === "/api/auth/me/") return { id: 1, email: "member@example.com" };
-        if (endpoint === "/api/organizations/2/leave/" && init?.method === "POST")
+        if (endpoint === "/api/auth/me/")
+          return { id: 1, email: "member@example.com" };
+        if (
+          endpoint === "/api/organizations/2/leave/" &&
+          init?.method === "POST"
+        )
           return undefined;
         throw new Error(`Unexpected: ${endpoint}`);
       },
     );
     renderSettings();
 
-    fireEvent.click(await screen.findByRole("button", { name: "Leave organization" }));
-    await screen.findByRole("alertdialog", { name: "Leave Acme Corp?" });
-    fireEvent.click(screen.getByRole("button", { name: "Leave organization" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Leave organization" }),
+    );
+    const settingsLeaveDialog = await screen.findByRole("alertdialog", {
+      name: "Leave Acme Corp?",
+    });
+    fireEvent.click(
+      within(settingsLeaveDialog).getByRole("button", {
+        name: "Leave organization",
+      }),
+    );
 
     await waitFor(() =>
       expect(mocks.api).toHaveBeenCalledWith("/api/organizations/2/leave/", {
