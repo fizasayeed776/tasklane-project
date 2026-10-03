@@ -126,6 +126,7 @@ export default function NotificationsNavbar() {
           type="button"
           className="relative grid size-10 place-items-center rounded-md text-sm hover:bg-accent-soft"
           aria-expanded={open}
+          aria-controls="recent-notifications"
           aria-label={`Notifications${unreadCount ? ` (${unreadCount} unread)` : ""}${connectionError ? " disconnected" : ""}`}
           onClick={() => setOpen((value) => !value)}
         >
@@ -148,7 +149,10 @@ export default function NotificationsNavbar() {
         </button>
       )}
       {open && (
-        <section className="absolute right-0 top-12 z-40 max-h-96 w-80 overflow-y-auto rounded-lg border border-line bg-surface p-3 shadow-md">
+        <section
+          id="recent-notifications"
+          className="absolute right-0 top-12 z-40 max-h-96 w-80 overflow-y-auto rounded-lg border border-line bg-surface p-3"
+        >
           <h2 className="mb-2 font-semibold">Recent notifications</h2>
           {notifications.length === 0 ? (
             <p className="py-4 text-sm text-muted">
@@ -184,7 +188,7 @@ export default function NotificationsNavbar() {
                   {!readIds.has(notification.id) && (
                     <button
                       type="button"
-                      className="min-h-9 shrink-0 rounded-md px-2 text-xs underline underline-offset-2"
+                      className="min-h-10 shrink-0 rounded-md px-2 text-xs underline underline-offset-2"
                       aria-label={`Mark notification as read: ${notification.message}`}
                       onClick={() =>
                         setReadIds((current) =>

@@ -17,6 +17,7 @@ import {
   setOrganization,
 } from "@/lib/api";
 import { initials, relativeTime, roleLabel } from "@/lib/format";
+import AccessibleDialog from "../../components/AccessibleDialog";
 import QueryError from "../../components/QueryError";
 import { useToast } from "../../components/ToastProvider";
 
@@ -241,7 +242,7 @@ export default function Dashboard() {
   ];
   return (
     <main className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:py-8">
-      <h1 className="page-title text-2xl font-semibold">Dashboard</h1>
+      <h1 className="page-title text-[28px] font-semibold">Dashboard</h1>
       {orgs.data && (orgs.data.length === 0 || (!!org && canManage(role))) && (
         <form
           className="flex flex-wrap gap-2"
@@ -560,98 +561,85 @@ export default function Dashboard() {
         </section>
       )}
       {projectModalOpen && (
-        <div
-          className="fixed inset-0 z-50 grid place-items-center bg-ink/35 p-4"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) {
-              setProjectModalOpen(false);
-            }
-          }}
+        <AccessibleDialog
+          labelledBy="new-project-title"
+          className="max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-xl border border-line bg-surface p-6 shadow-modal"
+          onClose={() => setProjectModalOpen(false)}
         >
-          <section
-            aria-labelledby="new-project-title"
-            aria-modal="true"
-            className="w-full max-w-md rounded-xl border border-line bg-surface p-6 shadow-modal"
-            role="dialog"
+          <h2
+            id="new-project-title"
+            className="page-title text-xl font-semibold"
           >
-            <h2
-              id="new-project-title"
-              className="page-title text-xl font-semibold"
-            >
-              New project
-            </h2>
-            <form
-              className="mt-4 space-y-4"
-              onSubmit={(event) => {
-                event.preventDefault();
-                createProject.mutate();
-              }}
-            >
-              <label className="block space-y-1 text-sm">
-                <span>Project name</span>
-                <input
-                  autoFocus
-                  className="input w-full"
-                  placeholder="Project name"
-                  value={pname}
-                  onChange={(event) => setPname(event.target.value)}
-                  required
-                />
-              </label>
-              {createProject.isError && (
-                <p role="alert" className="text-sm text-danger">
-                  {errorMessage(createProject.error)}
-                </p>
-              )}
-              <div className="flex justify-end gap-2">
-                <button
-                  className="min-h-10 rounded-md border border-line px-4"
-                  type="button"
-                  onClick={() => setProjectModalOpen(false)}
-                >
-                  Cancel
-                </button>
-                <button className="btn" disabled={createProject.isPending}>
-                  {createProject.isPending ? "Creating…" : "Create project"}
-                </button>
-              </div>
-            </form>
-          </section>
-        </div>
-      )}
-      {memberPendingRemoval && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-ink/35 p-4">
-          <section
-            aria-labelledby="remove-member-title"
-            aria-modal="true"
-            className="w-full max-w-md rounded-xl border border-line bg-surface p-6 shadow-modal"
-            role="alertdialog"
+            New project
+          </h2>
+          <form
+            className="mt-4 space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              createProject.mutate();
+            }}
           >
-            <h2 id="remove-member-title" className="font-semibold">
-              Remove {memberPendingRemoval.name}?
-            </h2>
-            <p className="mt-2 text-sm text-muted">
-              They will lose access to this organization and its projects.
-            </p>
-            <div className="mt-5 flex justify-end gap-2">
+            <label className="block space-y-1 text-sm">
+              <span>Project name</span>
+              <input
+                className="input w-full"
+                placeholder="Project name"
+                value={pname}
+                onChange={(event) => setPname(event.target.value)}
+                required
+              />
+            </label>
+            {createProject.isError && (
+              <p role="alert" className="text-sm text-danger">
+                {errorMessage(createProject.error)}
+              </p>
+            )}
+            <div className="flex justify-end gap-2">
               <button
                 className="min-h-10 rounded-md border border-line px-4"
                 type="button"
-                onClick={() => setMemberPendingRemoval(null)}
+                onClick={() => setProjectModalOpen(false)}
               >
                 Cancel
               </button>
-              <button
-                className="min-h-10 rounded-md bg-danger px-4 font-medium text-white"
-                type="button"
-                disabled={removeMember.isPending}
-                onClick={() => removeMember.mutate(memberPendingRemoval.id)}
-              >
-                {removeMember.isPending ? "Removing…" : "Remove member"}
+              <button className="btn" disabled={createProject.isPending}>
+                {createProject.isPending ? "Creating…" : "Create project"}
               </button>
             </div>
-          </section>
-        </div>
+          </form>
+        </AccessibleDialog>
+      )}
+      {memberPendingRemoval && (
+        <AccessibleDialog
+          labelledBy="remove-member-title"
+          className="max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-xl border border-line bg-surface p-6 shadow-modal"
+          onClose={() => setMemberPendingRemoval(null)}
+          role="alertdialog"
+        >
+          <h2 id="remove-member-title" className="font-semibold">
+            Remove {memberPendingRemoval.name}?
+          </h2>
+          <p className="mt-2 text-sm text-muted">
+            They will lose access to this organization and its projects.
+          </p>
+          <div className="mt-5 flex justify-end gap-2">
+            <button
+              className="min-h-10 rounded-md border border-line px-4"
+              type="button"
+              onClick={() => setMemberPendingRemoval(null)}
+            >
+              Cancel
+            </button>
+            <button
+              className="min-h-10 rounded-md bg-danger-surface px-4 font-medium text-on-danger"
+              type="button"
+              disabled={removeMember.isPending}
+              onClick={() => removeMember.mutate(memberPendingRemoval.id)}
+            >
+              {removeMember.isPending ? "Removing…" : "Remove member"}
+            </button>
+          </div>
+        </AccessibleDialog>
       )}
     </main>
   );

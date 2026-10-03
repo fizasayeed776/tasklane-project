@@ -5,7 +5,7 @@ export default function NotFound() {
     <main className="grid min-h-[70vh] place-items-center px-4 py-12">
       <section className="panel w-full max-w-md text-center">
         <p className="text-sm font-medium text-accent">404</p>
-        <h1 className="page-title mt-2 text-2xl font-semibold">
+        <h1 className="page-title mt-2 text-[28px] font-semibold">
           This page wandered off
         </h1>
         <p className="my-3 text-sm text-muted">

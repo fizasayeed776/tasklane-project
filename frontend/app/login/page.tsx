@@ -69,13 +69,19 @@ export default function Login() {
         </button>
       </form>
       <p className="text-sm">
-        <Link className="underline" href="/forgot-password">
+        <Link
+          className="inline-flex min-h-10 items-center underline"
+          href="/forgot-password"
+        >
           Forgot password?
         </Link>
       </p>
       <p className="text-sm">
         New here?{" "}
-        <Link className="underline" href="/register">
+        <Link
+          className="inline-flex min-h-10 items-center underline"
+          href="/register"
+        >
           Create an account
         </Link>
       </p>

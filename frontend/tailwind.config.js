@@ -12,6 +12,8 @@ module.exports = {
         "accent-soft": "var(--accent-soft)",
         warn: "var(--warning)",
         danger: "var(--danger)",
+        "danger-surface": "var(--danger-surface)",
+        "on-danger": "var(--on-danger)",
         success: "var(--success)",
       },
       borderRadius: { md: "8px", lg: "12px" },

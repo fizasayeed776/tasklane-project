@@ -646,11 +646,31 @@ describe("frontend user flows", () => {
     );
     renderDashboard();
 
-    fireEvent.click(await screen.findByRole("button", { name: "New project" }));
+    const openProjectDialog = await screen.findByRole("button", {
+      name: "New project",
+    });
+    openProjectDialog.focus();
+    fireEvent.click(openProjectDialog);
     expect(
       await screen.findByRole("dialog", { name: "New project" }),
     ).toBeInTheDocument();
-    fireEvent.change(screen.getByPlaceholderText("Project name"), {
+    let projectName = screen.getByPlaceholderText("Project name");
+    expect(projectName).toHaveFocus();
+    fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
+    expect(
+      screen.getByRole("button", { name: "Create project" }),
+    ).toHaveFocus();
+    fireEvent.keyDown(document, { key: "Tab" });
+    expect(projectName).toHaveFocus();
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(openProjectDialog).toHaveFocus();
+    fireEvent.click(openProjectDialog);
+    projectName = await screen.findByPlaceholderText("Project name");
+    expect(projectName).toHaveFocus();
+    fireEvent.change(projectName, {
       target: { value: "Field notes" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Create project" }));
@@ -664,6 +684,7 @@ describe("frontend user flows", () => {
     await waitFor(() =>
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
     );
+    expect(screen.getByRole("button", { name: "New project" })).toHaveFocus();
   });
 
   it("shows project counts, status, last task activity, and linked activity", async () => {

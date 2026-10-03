@@ -63,7 +63,10 @@ export default function ForgotPasswordPage() {
           {submitting ? "Sending…" : "Send reset link"}
         </button>
       </form>
-      <Link className="text-sm underline" href="/login">
+      <Link
+        className="inline-flex min-h-10 items-center text-sm underline"
+        href="/login"
+      >
         Back to log in
       </Link>
     </AuthCard>

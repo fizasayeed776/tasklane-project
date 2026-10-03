@@ -66,15 +66,19 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen">
       <header className="sticky top-0 z-30 border-b border-line bg-surface/95 backdrop-blur">
-        <div className="mx-auto flex min-h-16 max-w-7xl items-center gap-3 px-4 sm:px-6">
-          <Link href="/dashboard" className="flex shrink-0 items-center gap-2">
+        <div className="mx-auto flex min-h-16 max-w-7xl items-center gap-1.5 px-3 sm:gap-3 sm:px-6">
+          <Link
+            href="/dashboard"
+            aria-label="Tasklane home"
+            className="flex min-h-10 shrink-0 items-center gap-2"
+          >
             <span
               aria-hidden="true"
-              className="grid size-9 place-items-center rounded-md bg-accent text-sm font-semibold text-white"
+              className="grid size-10 place-items-center rounded-md bg-accent text-sm font-semibold text-white"
             >
               T
             </span>
-            <span className="text-base font-semibold tracking-tight">
+            <span className="hidden text-base font-semibold tracking-tight sm:inline">
               Tasklane
             </span>
           </Link>
@@ -84,6 +88,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               className="flex min-h-10 items-center gap-2 rounded-md border border-line px-3 text-sm hover:bg-accent-soft"
               aria-label="Organization switcher"
               aria-expanded={organizationMenuOpen}
+              aria-controls="organization-menu"
               onClick={() => setOrganizationMenuOpen((open) => !open)}
             >
               <span className="max-w-36 truncate">
@@ -99,8 +104,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             {organizationMenuOpen && (
               <div
                 role="menu"
+                id="organization-menu"
                 aria-label="Organizations"
-                className="absolute right-0 top-12 z-40 w-64 rounded-lg border border-line bg-surface p-2 shadow-md"
+                className="absolute right-0 top-12 z-40 w-64 rounded-lg border border-line bg-surface p-2"
               >
                 {orgs.data?.map((organization) => (
                   <button
@@ -128,6 +134,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               type="button"
               className="min-h-10 rounded-md px-3 text-sm hover:bg-accent-soft"
               aria-expanded={userMenuOpen}
+              aria-controls="user-menu"
               aria-label="User menu"
               onClick={() => setUserMenuOpen((open) => !open)}
             >
@@ -139,7 +146,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               </span>
             </button>
             {userMenuOpen && (
-              <div className="absolute right-0 top-12 z-40 w-60 rounded-lg border border-line bg-surface p-3 shadow-md">
+              <div
+                id="user-menu"
+                className="absolute right-0 top-12 z-40 w-60 rounded-lg border border-line bg-surface p-3"
+              >
                 <p className="truncate text-sm font-medium">
                   {displayName ?? "Account"}
                 </p>

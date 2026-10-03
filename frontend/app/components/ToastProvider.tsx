@@ -40,7 +40,7 @@ function Toast({
       <span className="min-w-0 flex-1">{item.message}</span>
       <button
         type="button"
-        className="grid size-8 shrink-0 place-items-center rounded-md hover:bg-accent-soft"
+        className="grid size-10 shrink-0 place-items-center rounded-md hover:bg-accent-soft"
         aria-label="Dismiss notification"
         onClick={() => dismiss(item.id)}
       >

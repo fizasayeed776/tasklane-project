@@ -15,17 +15,17 @@ export default function AuthCard({
         <header className="space-y-2">
           <Link
             href="/"
-            className="inline-flex items-center gap-2 text-sm font-medium text-muted"
+            className="inline-flex min-h-10 items-center gap-2 text-sm font-medium text-muted"
           >
             <span
               aria-hidden="true"
-              className="grid size-8 place-items-center rounded-md bg-accent text-white"
+              className="grid size-10 place-items-center rounded-md bg-accent text-white"
             >
               T
             </span>
             Tasklane
           </Link>
-          <h1 className="page-title text-2xl font-semibold">{title}</h1>
+          <h1 className="page-title text-[28px] font-semibold">{title}</h1>
           {description && <p className="text-sm text-muted">{description}</p>}
         </header>
         {children}

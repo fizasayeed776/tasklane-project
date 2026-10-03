@@ -13,6 +13,8 @@
   --accent-soft: #d7eeea;
   --warning: #b45309;
   --danger: #b91c1c;
+  --danger-surface: #b91c1c;
+  --on-danger: #ffffff;
   --success: #15803d;
 }
 
@@ -28,6 +30,8 @@
     --accent-soft: #1c4039;
     --warning: #f0b963;
     --danger: #ff9292;
+    --danger-surface: #7f1d1d;
+    --on-danger: #ffffff;
     --success: #78d99a;
   }
 }

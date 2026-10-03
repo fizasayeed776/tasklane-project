@@ -87,7 +87,10 @@ function RegisterForm() {
       </form>
       <p className="text-sm">
         Have an account?{" "}
-        <Link className="underline" href="/login">
+        <Link
+          className="inline-flex min-h-10 items-center underline"
+          href="/login"
+        >
           Log in
         </Link>
       </p>

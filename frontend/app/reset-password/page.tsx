@@ -84,7 +84,10 @@ function ResetPasswordForm() {
           </button>
         )}
       </form>
-      <Link className="text-sm underline" href="/forgot-password">
+      <Link
+        className="inline-flex min-h-10 items-center text-sm underline"
+        href="/forgot-password"
+      >
         Request another reset link
       </Link>
     </AuthCard>

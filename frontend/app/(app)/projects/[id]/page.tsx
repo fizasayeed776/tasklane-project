@@ -16,6 +16,7 @@ import {
   Task,
 } from "@/lib/api";
 import { initials, relativeTime, roleLabel } from "@/lib/format";
+import AccessibleDialog from "../../../components/AccessibleDialog";
 import QueryError from "../../../components/QueryError";
 import { useToast } from "../../../components/ToastProvider";
 
@@ -177,17 +178,14 @@ export default function ProjectPage() {
   });
   const list = tasks.data?.results ?? [];
   useEffect(() => {
-    if (!createOpen && !actionsOpen && !deleteTarget && !archivePrompt) return;
+    if (!actionsOpen) return;
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
-      setCreateOpen(false);
       setActionsOpen(false);
-      setDeleteTarget(null);
-      setArchivePrompt(false);
     };
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [createOpen, actionsOpen, deleteTarget, archivePrompt]);
+  }, [actionsOpen]);
   const queryError =
     project.error ?? orgs.error ?? members.error ?? tasks.error;
   if (queryError) {
@@ -219,7 +217,7 @@ export default function ProjectPage() {
       <header className="flex flex-wrap items-start gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="page-title text-2xl font-semibold">
+            <h1 className="page-title text-[28px] font-semibold">
               {project.data?.name}
             </h1>
             {project.data?.status && (
@@ -457,7 +455,7 @@ export default function ProjectPage() {
               setDropTarget(null);
             }}
           >
-            <h2 className="sticky top-16 z-10 mb-2 flex items-center justify-between rounded-lg bg-surface px-2 py-2 text-sm font-semibold">
+            <h2 className="sticky top-16 z-10 mb-2 flex items-center justify-between rounded-md bg-surface px-2 py-2 text-sm font-semibold">
               <span className="flex items-center gap-2">
                 <span
                   aria-hidden="true"
@@ -485,7 +483,7 @@ export default function ProjectPage() {
                       onDragStart={(e) =>
                         e.dataTransfer.setData("id", String(task.id))
                       }
-                      className="group rounded-lg border border-line bg-surface p-3 transition-[box-shadow,transform] active:cursor-grabbing active:shadow-modal"
+                      className="group rounded-md border border-line bg-surface p-3 transition-[box-shadow,transform] active:cursor-grabbing active:shadow-modal"
                     >
                       <Link
                         href={`/tasks/${task.id}`}
@@ -550,7 +548,7 @@ export default function ProjectPage() {
                             </span>
                             <select
                               aria-label={`Move ${task.title} to`}
-                              className="input min-h-9 w-full py-1 text-xs"
+                              className="input min-h-10 w-full py-1 text-xs"
                               value={task.status}
                               onChange={(event) =>
                                 move.mutate({
@@ -569,7 +567,7 @@ export default function ProjectPage() {
                         )}
                         {manageable && (
                           <button
-                            className="min-h-9 rounded-md px-2 text-xs text-danger underline underline-offset-2"
+                            className="min-h-10 rounded-md px-3 text-xs text-danger underline underline-offset-2"
                             type="button"
                             onClick={() => setDeleteTarget(task)}
                           >
@@ -585,203 +583,191 @@ export default function ProjectPage() {
         ))}
       </div>
       {createOpen && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-ink/35 p-4">
-          <section
-            aria-labelledby="new-task-title"
-            aria-modal="true"
-            className="w-full max-w-lg rounded-xl border border-line bg-surface p-6 shadow-modal"
-            role="dialog"
+        <AccessibleDialog
+          labelledBy="new-task-title"
+          className="max-h-[calc(100dvh-2rem)] w-full max-w-lg overflow-y-auto rounded-xl border border-line bg-surface p-6 shadow-modal"
+          onClose={() => setCreateOpen(false)}
+        >
+          <h2 id="new-task-title" className="page-title text-xl font-semibold">
+            New task
+          </h2>
+          <form
+            className="mt-4 grid gap-4 sm:grid-cols-2"
+            onSubmit={(event: FormEvent<HTMLFormElement>) => {
+              event.preventDefault();
+              create.mutate();
+            }}
           >
-            <h2
-              id="new-task-title"
-              className="page-title text-xl font-semibold"
-            >
-              New task
-            </h2>
-            <form
-              className="mt-4 grid gap-4 sm:grid-cols-2"
-              onSubmit={(event: FormEvent<HTMLFormElement>) => {
-                event.preventDefault();
-                create.mutate();
-              }}
-            >
-              <label className="space-y-1 text-sm sm:col-span-2">
-                <span>Title</span>
-                <input
-                  autoFocus
-                  className="input w-full"
-                  placeholder="Task title"
-                  value={title}
-                  onChange={(event) => setTitle(event.target.value)}
-                  required
-                />
-              </label>
-              <label className="space-y-1 text-sm sm:col-span-2">
-                <span>Description</span>
-                <textarea
-                  className="input w-full"
-                  rows={3}
-                  value={description}
-                  onChange={(event) => setDescription(event.target.value)}
-                />
-              </label>
-              <label className="space-y-1 text-sm">
-                <span>Priority</span>
-                <select
-                  className="input w-full"
-                  value={priority}
-                  onChange={(event) =>
-                    setPriority(
-                      event.target.value as (typeof PRIORITIES)[number],
-                    )
-                  }
-                >
-                  {PRIORITIES.map((value) => (
-                    <option key={value} value={value}>
-                      {roleLabel(value)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="space-y-1 text-sm">
-                <span>Assignee</span>
-                <select
-                  aria-label="Assignee"
-                  className="input w-full"
-                  value={assignee}
-                  onChange={(event) => setAssignee(event.target.value)}
-                >
-                  <option value="">Unassigned</option>
-                  {members.data?.map((member) => (
-                    <option key={member.user_id} value={member.user_id}>
-                      {member.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="space-y-1 text-sm sm:col-span-2">
-                <span>Due date</span>
-                <input
-                  className="input w-full sm:max-w-xs"
-                  type="date"
-                  value={dueDate}
-                  onChange={(event) => setDueDate(event.target.value)}
-                />
-              </label>
-              {create.isError && (
-                <p role="alert" className="text-sm text-danger sm:col-span-2">
-                  {errorMessage(create.error)}
-                </p>
-              )}
-              <div className="flex justify-end gap-2 sm:col-span-2">
-                <button
-                  className="min-h-10 rounded-md border border-line px-4"
-                  type="button"
-                  onClick={() => setCreateOpen(false)}
-                >
-                  Cancel
-                </button>
-                <button className="btn" disabled={create.isPending}>
-                  {create.isPending ? "Creating…" : "Create task"}
-                </button>
-              </div>
-            </form>
-          </section>
-        </div>
+            <label className="space-y-1 text-sm sm:col-span-2">
+              <span>Title</span>
+              <input
+                autoFocus
+                className="input w-full"
+                placeholder="Task title"
+                value={title}
+                onChange={(event) => setTitle(event.target.value)}
+                required
+              />
+            </label>
+            <label className="space-y-1 text-sm sm:col-span-2">
+              <span>Description</span>
+              <textarea
+                className="input w-full"
+                rows={3}
+                value={description}
+                onChange={(event) => setDescription(event.target.value)}
+              />
+            </label>
+            <label className="space-y-1 text-sm">
+              <span>Priority</span>
+              <select
+                className="input w-full"
+                value={priority}
+                onChange={(event) =>
+                  setPriority(event.target.value as (typeof PRIORITIES)[number])
+                }
+              >
+                {PRIORITIES.map((value) => (
+                  <option key={value} value={value}>
+                    {roleLabel(value)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="space-y-1 text-sm">
+              <span>Assignee</span>
+              <select
+                aria-label="Assignee"
+                className="input w-full"
+                value={assignee}
+                onChange={(event) => setAssignee(event.target.value)}
+              >
+                <option value="">Unassigned</option>
+                {members.data?.map((member) => (
+                  <option key={member.user_id} value={member.user_id}>
+                    {member.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="space-y-1 text-sm sm:col-span-2">
+              <span>Due date</span>
+              <input
+                className="input w-full sm:max-w-xs"
+                type="date"
+                value={dueDate}
+                onChange={(event) => setDueDate(event.target.value)}
+              />
+            </label>
+            {create.isError && (
+              <p role="alert" className="text-sm text-danger sm:col-span-2">
+                {errorMessage(create.error)}
+              </p>
+            )}
+            <div className="flex justify-end gap-2 sm:col-span-2">
+              <button
+                className="min-h-10 rounded-md border border-line px-4"
+                type="button"
+                onClick={() => setCreateOpen(false)}
+              >
+                Cancel
+              </button>
+              <button className="btn" disabled={create.isPending}>
+                {create.isPending ? "Creating…" : "Create task"}
+              </button>
+            </div>
+          </form>
+        </AccessibleDialog>
       )}
       {archivePrompt && project.data && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-ink/35 p-4">
-          <section
-            aria-labelledby="archive-project-title"
-            aria-modal="true"
-            className="w-full max-w-md rounded-xl border border-line bg-surface p-6 shadow-modal"
-            role="alertdialog"
-          >
-            <h2 id="archive-project-title" className="font-semibold">
-              {project.data.status === "ARCHIVED"
-                ? "Restore this project?"
-                : "Archive this project?"}
-            </h2>
-            <p className="mt-2 text-sm text-muted">
-              {project.data.status === "ARCHIVED"
-                ? "The project will be active and available to the team again."
-                : "The project will be marked archived. Its tasks and history will remain available."}
+        <AccessibleDialog
+          labelledBy="archive-project-title"
+          className="max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-xl border border-line bg-surface p-6 shadow-modal"
+          onClose={() => setArchivePrompt(false)}
+          role="alertdialog"
+        >
+          <h2 id="archive-project-title" className="font-semibold">
+            {project.data.status === "ARCHIVED"
+              ? "Restore this project?"
+              : "Archive this project?"}
+          </h2>
+          <p className="mt-2 text-sm text-muted">
+            {project.data.status === "ARCHIVED"
+              ? "The project will be active and available to the team again."
+              : "The project will be marked archived. Its tasks and history will remain available."}
+          </p>
+          {archiveProject.isError && (
+            <p role="alert" className="mt-3 text-sm text-danger">
+              {errorMessage(archiveProject.error)}
             </p>
-            {archiveProject.isError && (
-              <p role="alert" className="mt-3 text-sm text-danger">
-                {errorMessage(archiveProject.error)}
-              </p>
-            )}
-            <div className="mt-5 flex justify-end gap-2">
-              <button
-                className="min-h-10 rounded-md border border-line px-4"
-                type="button"
-                disabled={archiveProject.isPending}
-                onClick={() => setArchivePrompt(false)}
-              >
-                Cancel
-              </button>
-              <button
-                className="btn"
-                type="button"
-                disabled={archiveProject.isPending}
-                onClick={() => {
-                  archiveProject.mutate(
-                    project.data?.status === "ARCHIVED" ? "ACTIVE" : "ARCHIVED",
-                  );
-                }}
-              >
-                {archiveProject.isPending
-                  ? "Saving…"
-                  : project.data.status === "ARCHIVED"
-                    ? "Restore project"
-                    : "Archive project"}
-              </button>
-            </div>
-          </section>
-        </div>
+          )}
+          <div className="mt-5 flex justify-end gap-2">
+            <button
+              className="min-h-10 rounded-md border border-line px-4"
+              type="button"
+              disabled={archiveProject.isPending}
+              onClick={() => setArchivePrompt(false)}
+            >
+              Cancel
+            </button>
+            <button
+              className="btn"
+              type="button"
+              disabled={archiveProject.isPending}
+              onClick={() => {
+                archiveProject.mutate(
+                  project.data?.status === "ARCHIVED" ? "ACTIVE" : "ARCHIVED",
+                );
+              }}
+            >
+              {archiveProject.isPending
+                ? "Saving…"
+                : project.data.status === "ARCHIVED"
+                  ? "Restore project"
+                  : "Archive project"}
+            </button>
+          </div>
+        </AccessibleDialog>
       )}
       {deleteTarget && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-ink/35 p-4">
-          <section
-            aria-labelledby="delete-task-title"
-            aria-modal="true"
-            className="w-full max-w-md rounded-xl border border-line bg-surface p-6 shadow-modal"
-            role="alertdialog"
-          >
-            <h2 id="delete-task-title" className="font-semibold">
-              Delete “{deleteTarget.title}”?
-            </h2>
-            <p className="mt-2 text-sm text-muted">
-              This task will be permanently removed.
+        <AccessibleDialog
+          labelledBy="delete-task-title"
+          className="max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-xl border border-line bg-surface p-6 shadow-modal"
+          onClose={() => setDeleteTarget(null)}
+          role="alertdialog"
+        >
+          <h2 id="delete-task-title" className="font-semibold">
+            Delete “{deleteTarget.title}”?
+          </h2>
+          <p className="mt-2 text-sm text-muted">
+            This task will be permanently removed.
+          </p>
+          {remove.isError && (
+            <p role="alert" className="mt-3 text-sm text-danger">
+              {errorMessage(remove.error)}
             </p>
-            {remove.isError && (
-              <p role="alert" className="mt-3 text-sm text-danger">
-                {errorMessage(remove.error)}
-              </p>
-            )}
-            <div className="mt-5 flex justify-end gap-2">
-              <button
-                className="min-h-10 rounded-md border border-line px-4"
-                type="button"
-                disabled={remove.isPending}
-                onClick={() => setDeleteTarget(null)}
-              >
-                Cancel
-              </button>
-              <button
-                className="min-h-10 rounded-md bg-danger px-4 font-medium text-white"
-                type="button"
-                disabled={remove.isPending}
-                onClick={() => {
-                  remove.mutate(deleteTarget);
-                }}
-              >
-                {remove.isPending ? "Deleting…" : "Delete task"}
-              </button>
-            </div>
-          </section>
-        </div>
+          )}
+          <div className="mt-5 flex justify-end gap-2">
+            <button
+              className="min-h-10 rounded-md border border-line px-4"
+              type="button"
+              disabled={remove.isPending}
+              onClick={() => setDeleteTarget(null)}
+            >
+              Cancel
+            </button>
+            <button
+              className="min-h-10 rounded-md bg-danger-surface px-4 font-medium text-on-danger"
+              type="button"
+              disabled={remove.isPending}
+              onClick={() => {
+                remove.mutate(deleteTarget);
+              }}
+            >
+              {remove.isPending ? "Deleting…" : "Delete task"}
+            </button>
+          </div>
+        </AccessibleDialog>
       )}
     </main>
   );

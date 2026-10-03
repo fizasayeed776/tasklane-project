@@ -285,7 +285,7 @@ export default function TaskPage() {
             ) : (
               <>
                 <header className="flex flex-wrap items-start gap-3">
-                  <h1 className="page-title min-w-0 flex-1 text-2xl font-semibold">
+                  <h1 className="page-title min-w-0 flex-1 text-[28px] font-semibold">
                     {currentTask?.title}
                   </h1>
                   {canEditTask && (
@@ -392,7 +392,7 @@ export default function TaskPage() {
                         <div className="mt-2 flex gap-3 text-xs">
                           {isOwnComment && (
                             <button
-                              className="min-h-9 underline underline-offset-2"
+                              className="min-h-10 underline underline-offset-2"
                               type="button"
                               onClick={() => {
                                 setEditingComment(comment.id);
@@ -403,7 +403,7 @@ export default function TaskPage() {
                             </button>
                           )}
                           <button
-                            className="min-h-9 underline underline-offset-2"
+                            className="min-h-10 underline underline-offset-2"
                             type="button"
                             disabled={del.isPending}
                             onClick={() => del.mutate(comment.id)}
