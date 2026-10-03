@@ -18,9 +18,12 @@ from apps.organizations.services import accept_pending_invitations
 from . import services
 from .models import User
 from .serializers import (
+    AuthApiErrorSerializer,
+    ChangeEmailSerializer,
     ChangePasswordSerializer,
     ForgotSerializer,
     LogoutSerializer,
+    PasswordChangeResponseSerializer,
     RegisterSerializer,
     ResetSerializer,
     SuccessSerializer,
@@ -76,17 +79,56 @@ class MeView(generics.RetrieveUpdateAPIView):
 
 class ChangePasswordView(ThrottledMixin, APIView):
     @extend_schema(
+        summary="Change the authenticated user's password",
+        description=(
+            "Changes only the authenticated account, regardless of organization role. "
+            "Existing refresh tokens are revoked and a replacement token pair is returned."
+        ),
         request=ChangePasswordSerializer,
-        responses={200: SuccessSerializer},
+        responses={
+            200: PasswordChangeResponseSerializer,
+            400: AuthApiErrorSerializer,
+            401: AuthApiErrorSerializer,
+            429: AuthApiErrorSerializer,
+            500: AuthApiErrorSerializer,
+        },
     )
     def post(self, request):
         s = ChangePasswordSerializer(data=request.data)
         s.is_valid(raise_exception=True)
-        if not request.user.check_password(s.validated_data["old_password"]):
-            raise ValidationError("Old password is incorrect.")
-        request.user.set_password(s.validated_data["new_password"])
-        request.user.save()
-        return Response({"success": True})
+        result = services.change_password(
+            request.user,
+            s.validated_data["old_password"],
+            s.validated_data["new_password"],
+        )
+        return Response(result)
+
+
+class ChangeEmailView(ThrottledMixin, APIView):
+    @extend_schema(
+        summary="Change the authenticated user's email",
+        description=(
+            "Changes only the authenticated account, regardless of organization role. "
+            "Requires the current password and sends a notification to the old email address."
+        ),
+        request=ChangeEmailSerializer,
+        responses={
+            200: SuccessSerializer,
+            400: AuthApiErrorSerializer,
+            401: AuthApiErrorSerializer,
+            429: AuthApiErrorSerializer,
+            500: AuthApiErrorSerializer,
+        },
+    )
+    def post(self, request):
+        serializer = ChangeEmailSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        result = services.change_email(
+            request.user,
+            serializer.validated_data["new_email"],
+            serializer.validated_data["current_password"],
+        )
+        return Response(result)
 
 
 class ForgotPasswordView(ThrottledMixin, APIView):

@@ -233,6 +233,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 <p className="truncate text-xs text-muted">
                   {user.data?.email}
                 </p>
+                <Link
+                  href="/settings"
+                  role="menuitem"
+                  className="mt-2 flex min-h-10 items-center rounded-md px-3 text-sm hover:bg-accent-soft"
+                  onClick={() => setOpenDropdown(null)}
+                >
+                  Settings
+                </Link>
                 <button
                   type="button"
                   className="mt-3 min-h-10 w-full rounded-md border border-line px-3 text-left text-sm hover:bg-accent-soft"

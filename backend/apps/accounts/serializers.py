@@ -39,6 +39,11 @@ class ChangePasswordSerializer(serializers.Serializer):
         return value
 
 
+class ChangeEmailSerializer(serializers.Serializer):
+    new_email = serializers.EmailField()
+    current_password = serializers.CharField()
+
+
 class ForgotSerializer(serializers.Serializer):
     email = serializers.EmailField()
 
@@ -59,3 +64,19 @@ class LogoutSerializer(serializers.Serializer):
 
 class SuccessSerializer(serializers.Serializer):
     success = serializers.BooleanField()
+
+
+class PasswordChangeResponseSerializer(SuccessSerializer):
+    access = serializers.CharField()
+    refresh = serializers.CharField()
+
+
+class AuthApiErrorDetailSerializer(serializers.Serializer):
+    code = serializers.CharField()
+    message = serializers.CharField()
+    details = serializers.JSONField(required=False)
+
+
+class AuthApiErrorSerializer(serializers.Serializer):
+    success = serializers.BooleanField()
+    error = AuthApiErrorDetailSerializer()
