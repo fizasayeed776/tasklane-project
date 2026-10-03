@@ -38,6 +38,7 @@ class Task(models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+"
     )
     due_date = models.DateField(null=True, blank=True)
+    overdue_notified_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
