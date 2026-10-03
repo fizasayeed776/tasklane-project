@@ -761,6 +761,88 @@ describe("frontend user flows", () => {
     expect(screen.queryByPlaceholderText("Write a comment")).toBeNull();
   });
 
+  it("lets members edit their own comments and keeps empty comments disabled", async () => {
+    mocks.api.mockImplementation(
+      async (endpoint: string, init?: RequestInit & { json?: unknown }) => {
+        if (endpoint === "/api/tasks/1/") {
+          return {
+            id: 1,
+            project: 7,
+            organization: 2,
+            title: "Draft roadmap",
+            description: "First pass",
+            status: "TODO",
+            priority: "MEDIUM",
+            assigned_to: 5,
+            assigned_to_name: "Avery",
+            created_by: 5,
+            created_by_name: "Avery",
+            due_date: null,
+            created_at: "2026-10-01T10:00:00Z",
+          };
+        }
+        if (endpoint === "/api/organizations/") {
+          return [{ id: 2, name: "Acme", role: "MEMBER" }];
+        }
+        if (endpoint === "/api/auth/me/") {
+          return { id: 5, display_name: "Avery" };
+        }
+        if (endpoint === "/api/organizations/2/members/") {
+          return [
+            {
+              id: 3,
+              user_id: 5,
+              email: "avery@example.com",
+              name: "Avery",
+              role: "MEMBER",
+            },
+          ];
+        }
+        if (endpoint === "/api/tasks/1/comments/") {
+          return [
+            {
+              id: 9,
+              user: 5,
+              user_name: "Avery",
+              content: "Check the milestones.",
+              created_at: "2026-10-02T10:00:00Z",
+              updated_at: "2026-10-02T10:00:00Z",
+            },
+          ];
+        }
+        if (endpoint === "/api/tasks/1/activity/") return [];
+        if (endpoint === "/api/comments/9/" && init?.method === "PATCH") {
+          return undefined;
+        }
+        throw new Error(`Unexpected API call: ${endpoint}`);
+      },
+    );
+    renderTaskPage();
+
+    expect(
+      await screen.findByRole("heading", { name: "Task details" }),
+    ).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    const commentButton = screen.getByRole("button", { name: "Comment" });
+    expect(commentButton).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Edit comment"), {
+      target: { value: "Check dates and milestones." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save comment" }));
+
+    await waitFor(() => {
+      expect(mocks.api).toHaveBeenCalledWith("/api/comments/9/", {
+        method: "PATCH",
+        json: { content: "Check dates and milestones." },
+      });
+    });
+    fireEvent.change(screen.getByPlaceholderText("Write a comment"), {
+      target: { value: "A new note" },
+    });
+    expect(commentButton).toBeEnabled();
+    expect(screen.getAllByText("Avery").length).toBeGreaterThan(0);
+  });
+
   it("receives scoped notifications in the navbar without polling", async () => {
     vi.stubGlobal("WebSocket", MockWebSocket);
     localStorage.setItem("access", "short-lived-access-token");
