@@ -20,7 +20,6 @@ vi.mock("@/lib/api", async (importOriginal) => {
 import Login from "./login/page";
 import ProjectPage from "./(app)/projects/[id]/page";
 import TaskPage from "./(app)/tasks/[id]/page";
-import NotificationsNavbar from "./components/NotificationsNavbar";
 import AppShell from "./components/AppShell";
 import { ToastProvider } from "./components/ToastProvider";
 import Dashboard from "./(app)/dashboard/page";
@@ -165,15 +164,83 @@ describe("frontend user flows", () => {
       name: "Organization switcher",
     });
     await waitFor(() => expect(switcher).toHaveTextContent("Acme"));
+    const organizationChevron = switcher.querySelector("svg");
+    expect(organizationChevron).toHaveAttribute("aria-hidden", "true");
+    expect(organizationChevron).toHaveAttribute("focusable", "false");
+    expect(organizationChevron).toHaveAttribute("width", "16");
+    expect(organizationChevron).toHaveAttribute("height", "16");
+    expect(organizationChevron).toHaveAttribute("stroke", "currentColor");
+    expect(organizationChevron).toHaveAttribute("stroke-width", "2");
+    expect(organizationChevron).toHaveClass(
+      "transition-transform",
+      "duration-150",
+    );
     fireEvent.click(
       screen.getByRole("button", { name: "Organization switcher" }),
     );
+    expect(organizationChevron).toHaveClass("rotate-180");
     expect(
       screen.getByRole("menuitem", { name: /Studio.*Viewer/ }),
     ).toBeInTheDocument();
     fireEvent.click(screen.getByRole("menuitem", { name: /Studio.*Viewer/ }));
 
     await waitFor(() => expect(localStorage.getItem("org")).toBe("3"));
+  });
+
+  it("keeps navbar dropdowns exclusive, dismissible, and keyboard accessible", async () => {
+    localStorage.setItem("access", "short-lived-access-token");
+    localStorage.setItem("org", "2");
+    mocks.api.mockImplementation(async (endpoint: string) => {
+      if (endpoint === "/api/organizations/") {
+        return [{ id: 2, name: "Acme", role: "OWNER" }];
+      }
+      if (endpoint === "/api/auth/me/") {
+        return { email: "owner@example.com", display_name: "Avery" };
+      }
+      throw new Error(`Unexpected API call: ${endpoint}`);
+    });
+    vi.stubGlobal("WebSocket", MockWebSocket);
+    renderAppShell();
+
+    const notificationsButton = await screen.findByRole("button", {
+      name: "Notifications",
+    });
+    const userButton = screen.getByRole("button", { name: "User menu" });
+
+    expect(notificationsButton).toHaveAttribute("aria-expanded", "false");
+    expect(userButton).toHaveAttribute("aria-expanded", "false");
+
+    fireEvent.click(notificationsButton);
+    expect(notificationsButton).toHaveAttribute("aria-expanded", "true");
+    expect(
+      screen.getByRole("heading", { name: "Recent notifications" }),
+    ).toBeInTheDocument();
+    fireEvent.click(notificationsButton);
+    expect(notificationsButton).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(notificationsButton);
+
+    fireEvent.click(userButton);
+    expect(notificationsButton).toHaveAttribute("aria-expanded", "false");
+    expect(userButton).toHaveAttribute("aria-expanded", "true");
+    expect(
+      screen.queryByRole("heading", { name: "Recent notifications" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Log out" })).toBeInTheDocument();
+
+    fireEvent.click(userButton);
+    expect(userButton).toHaveAttribute("aria-expanded", "false");
+    expect(
+      screen.queryByRole("button", { name: "Log out" }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(notificationsButton);
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(notificationsButton).toHaveAttribute("aria-expanded", "false");
+    expect(notificationsButton).toHaveFocus();
+
+    fireEvent.click(userButton);
+    fireEvent.pointerDown(screen.getByText("Workspace content"));
+    expect(userButton).toHaveAttribute("aria-expanded", "false");
   });
 
   it("creates a task from the new-task modal", async () => {
@@ -933,7 +1000,16 @@ describe("frontend user flows", () => {
     vi.stubGlobal("WebSocket", MockWebSocket);
     localStorage.setItem("access", "short-lived-access-token");
     localStorage.setItem("org", "2");
-    render(<NotificationsNavbar />);
+    mocks.api.mockImplementation(async (endpoint: string) => {
+      if (endpoint === "/api/organizations/") {
+        return [{ id: 2, name: "Acme", role: "OWNER" }];
+      }
+      if (endpoint === "/api/auth/me/") {
+        return { email: "owner@example.com", display_name: "Avery" };
+      }
+      throw new Error(`Unexpected API call: ${endpoint}`);
+    });
+    renderAppShell();
 
     await waitFor(() => expect(MockWebSocket.instances).toHaveLength(1));
     const socket = MockWebSocket.instances[0];

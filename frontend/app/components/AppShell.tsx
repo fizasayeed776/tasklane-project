@@ -3,7 +3,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { api, clearSession, Org, setOrganization } from "@/lib/api";
 import NotificationsNavbar from "./NotificationsNavbar";
@@ -16,6 +16,28 @@ type CurrentUser = {
 
 function roleLabel(role: Org["role"]) {
   return role.charAt(0) + role.slice(1).toLowerCase();
+}
+
+function ChevronDown({ open }: { open: boolean }) {
+  return (
+    <svg
+      aria-hidden="true"
+      focusable="false"
+      viewBox="0 0 24 24"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={`size-4 shrink-0 transition-transform duration-150 ${
+        open ? "rotate-180" : ""
+      }`}
+    >
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  );
 }
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
@@ -31,7 +53,45 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   });
   const [organizationId, setOrganizationId] = useState("");
   const [organizationMenuOpen, setOrganizationMenuOpen] = useState(false);
-  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [openDropdown, setOpenDropdown] = useState<
+    "notifications" | "user" | null
+  >(null);
+  const notificationsContainerRef = useRef<HTMLDivElement>(null);
+  const notificationsButtonRef = useRef<HTMLButtonElement>(null);
+  const userContainerRef = useRef<HTMLDivElement>(null);
+  const userButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!openDropdown) return;
+
+    function handlePointerDown(event: PointerEvent) {
+      const target = event.target;
+      if (
+        target instanceof Node &&
+        !notificationsContainerRef.current?.contains(target) &&
+        !userContainerRef.current?.contains(target)
+      ) {
+        setOpenDropdown(null);
+      }
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      setOpenDropdown(null);
+      if (openDropdown === "notifications") {
+        notificationsButtonRef.current?.focus();
+      } else {
+        userButtonRef.current?.focus();
+      }
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [openDropdown]);
 
   useEffect(() => {
     const current = localStorage.getItem("org") ?? "";
@@ -99,7 +159,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                   {roleLabel(currentOrg.role)}
                 </span>
               )}
-              <span aria-hidden="true">⌄</span>
+              <ChevronDown open={organizationMenuOpen} />
             </button>
             {organizationMenuOpen && (
               <div
@@ -128,15 +188,31 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               </div>
             )}
           </div>
-          <NotificationsNavbar />
-          <div className="relative">
+          <div ref={notificationsContainerRef}>
+            <NotificationsNavbar
+              open={openDropdown === "notifications"}
+              onToggle={() =>
+                setOpenDropdown((current) =>
+                  current === "notifications" ? null : "notifications",
+                )
+              }
+              onClose={() => setOpenDropdown(null)}
+              buttonRef={notificationsButtonRef}
+            />
+          </div>
+          <div ref={userContainerRef} className="relative">
             <button
+              ref={userButtonRef}
               type="button"
-              className="min-h-10 rounded-md px-3 text-sm hover:bg-accent-soft"
-              aria-expanded={userMenuOpen}
+              className="flex min-h-10 items-center gap-2 rounded-md px-3 text-sm hover:bg-accent-soft"
+              aria-expanded={openDropdown === "user"}
               aria-controls="user-menu"
               aria-label="User menu"
-              onClick={() => setUserMenuOpen((open) => !open)}
+              onClick={() =>
+                setOpenDropdown((current) =>
+                  current === "user" ? null : "user",
+                )
+              }
             >
               <span className="hidden sm:inline">
                 {displayName ?? "Account"}
@@ -144,8 +220,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               <span className="sm:hidden" aria-hidden="true">
                 {displayName?.slice(0, 1).toUpperCase() ?? "A"}
               </span>
+              <ChevronDown open={openDropdown === "user"} />
             </button>
-            {userMenuOpen && (
+            {openDropdown === "user" && (
               <div
                 id="user-menu"
                 className="absolute right-0 top-12 z-40 w-60 rounded-lg border border-line bg-surface p-3"
