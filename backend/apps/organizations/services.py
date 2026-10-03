@@ -175,3 +175,116 @@ def remove_member(actor, org, member):
     if actor_role != R.OWNER and member.role not in {R.MEMBER, R.VIEWER}:
         raise PermissionDenied("Admins can only manage members and viewers.")
     member.delete()
+
+
+@transaction.atomic
+def transfer_ownership(actor, org, target_member):
+    """Transfer organization ownership to an existing member.
+
+    Only the current OWNER may call this. The target must be an existing member
+    of the same organization (not a pending invite). After the transfer:
+      - target becomes OWNER
+      - previous owner becomes ADMIN
+      - Organization.owner is updated
+    An activity entry is written on the organization.
+    """
+    ensure_role(actor, org.id, R.OWNER)
+    # Must be exactly OWNER — ensure_role allows OWNER and above so re-check
+    actor_membership = OrganizationMember.objects.filter(
+        organization=org, user=actor
+    ).first()
+    if not actor_membership or actor_membership.role != R.OWNER:
+        raise PermissionDenied("Only the organization owner can transfer ownership.")
+
+    if target_member.organization_id != org.id:
+        raise ValidationError(
+            {"member_id": "That member does not belong to this organization."}
+        )
+    if target_member.user_id == actor.id:
+        raise ValidationError(
+            {"member_id": "You are already the owner of this organization."}
+        )
+
+    # Promote target to OWNER
+    target_member.role = R.OWNER
+    target_member.save(update_fields=["role"])
+
+    # Demote old owner to ADMIN
+    actor_membership.role = R.ADMIN
+    actor_membership.save(update_fields=["role"])
+
+    # Update the Organization.owner FK
+    org.owner = target_member.user
+    org.save(update_fields=["owner"])
+
+    # Write an activity entry (org-level, no task)
+    from apps.tasks.models import Activity
+
+    Activity.objects.create(
+        organization=org,
+        task=None,
+        actor=actor,
+        verb="ownership_transferred",
+        message=(
+            f"{actor.display_name} transferred ownership of {org.name} to "
+            f"{target_member.user.display_name}."
+        ),
+    )
+    return org
+
+
+@transaction.atomic
+def leave_organization(actor, org):
+    """Remove the calling user from the organization.
+
+    The OWNER cannot leave — they must transfer ownership first.
+    Unassigns the user's tasks within the organization.
+    """
+    membership = OrganizationMember.objects.filter(
+        organization=org, user=actor
+    ).first()
+    if membership is None:
+        raise PermissionDenied("You are not a member of this organization.")
+    if membership.role == R.OWNER:
+        raise ValidationError(
+            {
+                "detail": (
+                    "The organization owner cannot leave. Transfer ownership to "
+                    "another member first."
+                )
+            }
+        )
+
+    # Unassign tasks this user owns in this organization
+    from apps.tasks.models import Task
+
+    Task.objects.filter(
+        project__organization=org, assigned_to=actor
+    ).update(assigned_to=None)
+
+    membership.delete()
+
+
+@transaction.atomic
+def delete_organization(actor, org, name_confirmation):
+    """Delete the organization and all its data.
+
+    Only the OWNER may do this. The request must confirm the organization name.
+    Cascades: projects, tasks, comments, activity, pending invitations.
+    """
+    if role_of(actor, org.id) != R.OWNER:
+        raise PermissionDenied("Only the organization owner can delete the organization.")
+
+    if name_confirmation.strip() != org.name:
+        raise ValidationError(
+            {
+                "name": (
+                    f"The name you entered does not match \"{org.name}\". "
+                    "Type the exact organization name to confirm deletion."
+                )
+            }
+        )
+
+    # Django CASCADE on Organization → memberships, projects (→ tasks → comments,
+    # activity), pending_invitations.  A single delete() is sufficient.
+    org.delete()

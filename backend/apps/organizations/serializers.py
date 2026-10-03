@@ -75,3 +75,15 @@ class InviteResultSerializer(serializers.Serializer):
         ]
     )
     pending = serializers.BooleanField()
+
+
+class TransferOwnershipSerializer(serializers.Serializer):
+    member_id = serializers.IntegerField()
+
+
+class LeaveOrganizationSerializer(serializers.Serializer):
+    pass  # no body required
+
+
+class DeleteOrganizationSerializer(serializers.Serializer):
+    name = serializers.CharField(help_text="Must exactly match the organization name.")
