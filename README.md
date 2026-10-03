@@ -272,6 +272,18 @@ Backend tests enforce a minimum 80% coverage threshold. `pytest.ini` supplies a 
 
 ## Screenshots
 
+![Dashboard with stats and recent activity](docs/screenshots/01-dashboard.png)
+
+![Project page](docs/screenshots/02-project.png)
+
+![Task comments page](docs/screenshots/03-comments-page.png)
+
+![New task form](docs/screenshots/04-task.png)
+
+![Task comments and activity](docs/screenshots/05-comments.png)
+
+![Account settings](docs/screenshots/06-settings.png)
+
 ## Known limitations and next steps
 
 - Docker Compose is the local development stack, not a production high-availability deployment. Production ingress, TLS termination, managed-service provisioning, backups, monitoring, and secret rotation must be configured separately.
