@@ -18,10 +18,12 @@ vi.mock("@/lib/api", async (importOriginal) => {
 });
 
 import Login from "./login/page";
-import ProjectPage from "./projects/[id]/page";
+import ProjectPage from "./(app)/projects/[id]/page";
+import TaskPage from "./(app)/tasks/[id]/page";
 import NotificationsNavbar from "./components/NotificationsNavbar";
-import Dashboard from "./dashboard/page";
-import TaskPage from "./tasks/[id]/page";
+import AppShell from "./components/AppShell";
+import { ToastProvider } from "./components/ToastProvider";
+import Dashboard from "./(app)/dashboard/page";
 
 class MockWebSocket {
   static instances: MockWebSocket[] = [];
@@ -45,7 +47,9 @@ function renderProjectPage() {
   });
   return render(
     <QueryClientProvider client={client}>
-      <ProjectPage />
+      <ToastProvider>
+        <ProjectPage />
+      </ToastProvider>
     </QueryClientProvider>,
   );
 }
@@ -56,7 +60,22 @@ function renderDashboard() {
   });
   return render(
     <QueryClientProvider client={client}>
-      <Dashboard />
+      <ToastProvider>
+        <Dashboard />
+      </ToastProvider>
+    </QueryClientProvider>,
+  );
+}
+
+function renderAppShell() {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  return render(
+    <QueryClientProvider client={client}>
+      <AppShell>
+        <main>Workspace content</main>
+      </AppShell>
     </QueryClientProvider>,
   );
 }
@@ -67,7 +86,9 @@ function renderTaskPage() {
   });
   return render(
     <QueryClientProvider client={client}>
-      <TaskPage />
+      <ToastProvider>
+        <TaskPage />
+      </ToastProvider>
     </QueryClientProvider>,
   );
 }
@@ -110,7 +131,52 @@ describe("frontend user flows", () => {
     expect(localStorage.getItem("refresh")).toBe("refresh-token");
   });
 
-  it("creates a task in the current project", async () => {
+  it("shows password visibility toggle on the login form", () => {
+    render(<Login />);
+    const password = screen.getByPlaceholderText("Password");
+    expect(password).toHaveAttribute("type", "password");
+    fireEvent.click(screen.getByRole("button", { name: "Show password" }));
+    expect(password).toHaveAttribute("type", "text");
+    fireEvent.click(screen.getByRole("button", { name: "Hide password" }));
+    expect(password).toHaveAttribute("type", "password");
+  });
+
+  it("switches organizations from the authenticated top bar and displays roles", async () => {
+    localStorage.setItem("org", "2");
+    mocks.api.mockImplementation(async (endpoint: string) => {
+      if (endpoint === "/api/organizations/") {
+        return [
+          { id: 2, name: "Acme", role: "OWNER" },
+          { id: 3, name: "Studio", role: "VIEWER" },
+        ];
+      }
+      if (endpoint === "/api/auth/me/") {
+        return {
+          id: 5,
+          email: "owner@example.com",
+          display_name: "Avery",
+        };
+      }
+      throw new Error(`Unexpected API call: ${endpoint}`);
+    });
+    renderAppShell();
+
+    const switcher = screen.getByRole("button", {
+      name: "Organization switcher",
+    });
+    await waitFor(() => expect(switcher).toHaveTextContent("Acme"));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Organization switcher" }),
+    );
+    expect(
+      screen.getByRole("menuitem", { name: /Studio.*Viewer/ }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("menuitem", { name: /Studio.*Viewer/ }));
+
+    await waitFor(() => expect(localStorage.getItem("org")).toBe("3"));
+  });
+
+  it("creates a task from the new-task modal", async () => {
     mocks.api.mockImplementation(
       async (endpoint: string, init?: RequestInit & { json?: unknown }) => {
         if (endpoint === "/api/projects/1/") {
@@ -151,10 +217,23 @@ describe("frontend user flows", () => {
     );
     renderProjectPage();
 
-    fireEvent.change(await screen.findByPlaceholderText("New task title"), {
+    fireEvent.click(await screen.findByRole("button", { name: "New task" }));
+    expect(
+      await screen.findByRole("dialog", { name: "New task" }),
+    ).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Title"), {
       target: { value: "Write release notes" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Add task" }));
+    fireEvent.change(screen.getByLabelText("Description"), {
+      target: { value: "Summarize the latest release." },
+    });
+    fireEvent.change(screen.getByLabelText("Priority"), {
+      target: { value: "HIGH" },
+    });
+    fireEvent.change(screen.getByLabelText("Due date"), {
+      target: { value: "2026-11-12" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create task" }));
 
     await waitFor(() => {
       expect(mocks.api).toHaveBeenCalledWith("/api/tasks/", {
@@ -162,8 +241,163 @@ describe("frontend user flows", () => {
         json: {
           project: 1,
           title: "Write release notes",
+          description: "Summarize the latest release.",
+          priority: "HIGH",
           assigned_to: null,
+          due_date: "2026-11-12",
         },
+      });
+    });
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+  });
+
+  it("rolls back a failed keyboard task move and shows a toast", async () => {
+    const task = {
+      id: 10,
+      project: 1,
+      organization: 2,
+      title: "Prepare launch plan",
+      description: "",
+      status: "TODO",
+      priority: "HIGH",
+      assigned_to: null,
+      assigned_to_name: null,
+      created_by: 5,
+      created_by_name: "Avery",
+      due_date: null,
+    };
+    mocks.api.mockImplementation(
+      async (endpoint: string, init?: RequestInit & { json?: unknown }) => {
+        if (endpoint === "/api/projects/1/") {
+          return {
+            id: 1,
+            organization: 2,
+            name: "Roadmap",
+            description: "",
+            status: "ACTIVE",
+            created_by: 1,
+          };
+        }
+        if (endpoint === "/api/organizations/") {
+          return [{ id: 2, name: "Acme", role: "MEMBER" }];
+        }
+        if (endpoint === "/api/organizations/2/members/") return [];
+        if (endpoint.startsWith("/api/tasks/?")) return { results: [task] };
+        if (endpoint === "/api/tasks/10/" && init?.method === "PATCH") {
+          throw new Error("Network unavailable");
+        }
+        throw new Error(`Unexpected API call: ${endpoint}`);
+      },
+    );
+    renderProjectPage();
+
+    const moveMenu = await screen.findByRole("combobox", {
+      name: "Move Prepare launch plan to",
+    });
+    fireEvent.change(moveMenu, { target: { value: "IN_PROGRESS" } });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Couldn't move task. Reverted.",
+    );
+    await waitFor(() => expect(moveMenu).toHaveValue("TODO"));
+    expect(mocks.api).toHaveBeenCalledWith("/api/tasks/10/", {
+      method: "PATCH",
+      json: { status: "IN_PROGRESS" },
+    });
+  });
+
+  it("opens project edit and archive actions from the header menu", async () => {
+    mocks.api.mockImplementation(async (endpoint: string) => {
+      if (endpoint === "/api/projects/1/") {
+        return {
+          id: 1,
+          organization: 2,
+          name: "Roadmap",
+          description: "",
+          status: "ACTIVE",
+          created_by: 1,
+        };
+      }
+      if (endpoint === "/api/organizations/") {
+        return [{ id: 2, name: "Acme", role: "OWNER" }];
+      }
+      if (endpoint === "/api/organizations/2/members/") return [];
+      if (endpoint.startsWith("/api/tasks/?")) return { results: [] };
+      throw new Error(`Unexpected API call: ${endpoint}`);
+    });
+    renderProjectPage();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Project actions" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Edit project" }));
+    expect(
+      screen.getByRole("button", { name: "Save project" }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Project actions" }));
+    fireEvent.click(screen.getByRole("button", { name: "Archive project" }));
+    expect(
+      await screen.findByRole("alertdialog", {
+        name: "Archive this project?",
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("confirms task deletion before sending the delete request", async () => {
+    const task = {
+      id: 10,
+      project: 1,
+      organization: 2,
+      title: "Old draft",
+      description: "",
+      status: "TODO",
+      priority: "LOW",
+      assigned_to: null,
+      assigned_to_name: null,
+      created_by: 5,
+      created_by_name: "Avery",
+      due_date: null,
+    };
+    mocks.api.mockImplementation(
+      async (endpoint: string, init?: RequestInit & { json?: unknown }) => {
+        if (endpoint === "/api/projects/1/") {
+          return {
+            id: 1,
+            organization: 2,
+            name: "Roadmap",
+            description: "",
+            status: "ACTIVE",
+            created_by: 1,
+          };
+        }
+        if (endpoint === "/api/organizations/") {
+          return [{ id: 2, name: "Acme", role: "OWNER" }];
+        }
+        if (endpoint === "/api/organizations/2/members/") return [];
+        if (endpoint.startsWith("/api/tasks/?")) return { results: [task] };
+        if (endpoint === "/api/tasks/10/" && init?.method === "DELETE") {
+          return undefined;
+        }
+        throw new Error(`Unexpected API call: ${endpoint}`);
+      },
+    );
+    renderProjectPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Delete" }));
+    expect(
+      await screen.findByRole("alertdialog", { name: "Delete “Old draft”?" }),
+    ).toBeInTheDocument();
+    expect(mocks.api).not.toHaveBeenCalledWith(
+      "/api/tasks/10/",
+      expect.objectContaining({ method: "DELETE" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Delete task" }));
+    await waitFor(() => {
+      expect(mocks.api).toHaveBeenCalledWith("/api/tasks/10/", {
+        method: "DELETE",
       });
     });
   });
@@ -189,7 +423,7 @@ describe("frontend user flows", () => {
     });
     renderProjectPage();
 
-    expect(await screen.findByText("VIEWER")).toBeInTheDocument();
+    expect(await screen.findByText("Viewer")).toBeInTheDocument();
     expect(
       await screen.findByText("0 tasks · 0 done · 0 members"),
     ).toBeInTheDocument();
@@ -197,7 +431,7 @@ describe("frontend user flows", () => {
       screen.getByRole("heading", { name: "Organization members (0)" }),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "Add task" }),
+      screen.queryByRole("button", { name: "New task" }),
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "Delete" }),
@@ -230,23 +464,21 @@ describe("frontend user flows", () => {
       });
       renderProjectPage();
 
-      expect(await screen.findByText(role)).toBeInTheDocument();
+      const roleLabel = role[0] + role.slice(1).toLowerCase();
+      expect(await screen.findByText(roleLabel)).toBeInTheDocument();
       expect(
-        screen.queryByRole("button", { name: "Edit project" }),
-      ).not.toBeInTheDocument();
-      expect(
-        screen.queryByRole("button", { name: "Archive project" }),
+        screen.queryByRole("button", { name: "Project actions" }),
       ).not.toBeInTheDocument();
       expect(
         screen.queryByRole("button", { name: "Invite member" }),
       ).not.toBeInTheDocument();
       if (role === "VIEWER") {
         expect(
-          screen.queryByRole("button", { name: "Add task" }),
+          screen.queryByRole("button", { name: "New task" }),
         ).not.toBeInTheDocument();
       } else {
         expect(
-          await screen.findByRole("button", { name: "Add task" }),
+          await screen.findByRole("button", { name: "New task" }),
         ).toBeInTheDocument();
       }
     },
@@ -272,14 +504,17 @@ describe("frontend user flows", () => {
     );
     renderDashboard();
 
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Invite member" }),
+    );
     fireEvent.change(await screen.findByPlaceholderText("Member email"), {
       target: { value: "new@example.com" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Invite member" }));
+    fireEvent.click(screen.getByRole("button", { name: "Send invitation" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "No registered user with that email.",
-    );
+    expect(
+      await screen.findAllByText("No registered user with that email."),
+    ).not.toHaveLength(0);
   });
 
   it("confirms a pending invitation and clears the invite form on success", async () => {
@@ -302,11 +537,14 @@ describe("frontend user flows", () => {
     );
     renderDashboard();
 
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Invite member" }),
+    );
     const email = await screen.findByPlaceholderText("Member email");
     for (const label of [
       "Create organization",
-      "Add project",
-      "Invite member",
+      "New project",
+      "Send invitation",
     ]) {
       expect(screen.getByRole("button", { name: label })).toHaveClass(
         "whitespace-nowrap",
@@ -314,11 +552,13 @@ describe("frontend user flows", () => {
       );
     }
     fireEvent.change(email, { target: { value: "new@example.com" } });
-    fireEvent.click(screen.getByRole("button", { name: "Invite member" }));
+    fireEvent.click(screen.getByRole("button", { name: "Send invitation" }));
 
-    expect(await screen.findByRole("status")).toHaveTextContent(
-      "Invitation sent to new@example.com.",
-    );
+    expect(
+      await screen.findByText(
+        "Invitation sent to new@example.com. They can register to join.",
+      ),
+    ).toBeInTheDocument();
     expect(email).toHaveValue("");
     expect(mocks.api).toHaveBeenCalledWith(
       "/api/organizations/2/members/",
@@ -370,7 +610,7 @@ describe("frontend user flows", () => {
         screen.queryByRole("button", { name: "Create organization" }),
       ).not.toBeInTheDocument();
       expect(
-        screen.queryByRole("button", { name: "Add project" }),
+        screen.queryByRole("button", { name: "New project" }),
       ).not.toBeInTheDocument();
       expect(
         screen.queryByRole("button", { name: "Remove" }),
@@ -378,6 +618,189 @@ describe("frontend user flows", () => {
       expect(screen.queryByLabelText("Member role")).not.toBeInTheDocument();
     },
   );
+
+  it("creates a project from the new-project dialog", async () => {
+    mocks.api.mockImplementation(
+      async (endpoint: string, init?: RequestInit & { json?: unknown }) => {
+        if (endpoint === "/api/organizations/") {
+          return [{ id: 2, name: "Acme", role: "OWNER" }];
+        }
+        if (endpoint === "/api/organizations/2/members/") return [];
+        if (endpoint === "/api/dashboard/") return {};
+        if (endpoint === "/api/projects/" && init?.method === "POST") {
+          return {
+            id: 12,
+            organization: 2,
+            name: "Field notes",
+            description: "",
+            status: "ACTIVE",
+            created_by: 1,
+          };
+        }
+        if (endpoint === "/api/projects/?ordering=-created_at") {
+          return { results: [] };
+        }
+        if (endpoint === "/api/activity/") return [];
+        throw new Error(`Unexpected API call: ${endpoint}`);
+      },
+    );
+    renderDashboard();
+
+    const openProjectDialog = await screen.findByRole("button", {
+      name: "New project",
+    });
+    openProjectDialog.focus();
+    fireEvent.click(openProjectDialog);
+    expect(
+      await screen.findByRole("dialog", { name: "New project" }),
+    ).toBeInTheDocument();
+    let projectName = screen.getByPlaceholderText("Project name");
+    expect(projectName).toHaveFocus();
+    fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
+    expect(
+      screen.getByRole("button", { name: "Create project" }),
+    ).toHaveFocus();
+    fireEvent.keyDown(document, { key: "Tab" });
+    expect(projectName).toHaveFocus();
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(openProjectDialog).toHaveFocus();
+    fireEvent.click(openProjectDialog);
+    projectName = await screen.findByPlaceholderText("Project name");
+    expect(projectName).toHaveFocus();
+    fireEvent.change(projectName, {
+      target: { value: "Field notes" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create project" }));
+
+    await waitFor(() => {
+      expect(mocks.api).toHaveBeenCalledWith("/api/projects/", {
+        method: "POST",
+        json: { name: "Field notes", organization_id: 2 },
+      });
+    });
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(screen.getByRole("button", { name: "New project" })).toHaveFocus();
+  });
+
+  it("shows project counts, status, last task activity, and linked activity", async () => {
+    mocks.api.mockImplementation(async (endpoint: string) => {
+      if (endpoint === "/api/organizations/") {
+        return [{ id: 2, name: "Acme", role: "MEMBER" }];
+      }
+      if (endpoint === "/api/organizations/2/members/") return [];
+      if (endpoint === "/api/dashboard/") {
+        return {
+          total_projects: 1,
+          total_tasks: 2,
+          assigned_to_me: 1,
+          completed: 1,
+          overdue: 0,
+        };
+      }
+      if (endpoint === "/api/projects/?ordering=-created_at") {
+        return {
+          results: [
+            {
+              id: 8,
+              organization: 2,
+              name: "Field notes",
+              description: "",
+              status: "ACTIVE",
+              created_by: 1,
+              created_at: "2026-09-30T10:00:00Z",
+            },
+          ],
+        };
+      }
+      if (endpoint === "/api/tasks/?project=8") {
+        return {
+          count: 2,
+          next: null,
+          results: [
+            {
+              created_at: "2026-09-30T10:00:00Z",
+              updated_at: "2026-10-02T10:00:00Z",
+            },
+          ],
+        };
+      }
+      if (endpoint === "/api/activity/") {
+        return [
+          {
+            id: 4,
+            task: 42,
+            verb: "comment_added",
+            message: "Avery commented on a task.",
+            created_at: "2026-10-02T10:00:00Z",
+          },
+        ];
+      }
+      throw new Error(`Unexpected API call: ${endpoint}`);
+    });
+    renderDashboard();
+
+    expect(await screen.findByText("2 tasks")).toBeInTheDocument();
+    expect(screen.getByText("Active")).toBeInTheDocument();
+    expect(screen.getByText(/Updated/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "View task" })).toHaveAttribute(
+      "href",
+      "/tasks/42",
+    );
+    expect(screen.getByText("Overdue")).toBeInTheDocument();
+  });
+
+  it("requires confirmation before removing an organization member", async () => {
+    mocks.api.mockImplementation(
+      async (endpoint: string, init?: RequestInit & { json?: unknown }) => {
+        if (endpoint === "/api/organizations/") {
+          return [{ id: 2, name: "Acme", role: "OWNER" }];
+        }
+        if (endpoint === "/api/organizations/2/members/") {
+          if (init?.method === "DELETE") return undefined;
+          return [
+            {
+              id: 3,
+              user_id: 5,
+              email: "member@example.com",
+              name: "Morgan Lee",
+              role: "MEMBER",
+            },
+          ];
+        }
+        if (endpoint === "/api/dashboard/") return {};
+        if (endpoint === "/api/projects/?ordering=-created_at")
+          return { results: [] };
+        if (endpoint === "/api/activity/") return [];
+        throw new Error(`Unexpected API call: ${endpoint}`);
+      },
+    );
+    renderDashboard();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Remove", exact: true }),
+    );
+    expect(
+      await screen.findByRole("alertdialog", {
+        name: "Remove Morgan Lee?",
+      }),
+    ).toBeInTheDocument();
+    expect(mocks.api).not.toHaveBeenCalledWith(
+      "/api/organizations/2/members/3/",
+      expect.objectContaining({ method: "DELETE" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Remove member" }));
+    await waitFor(() => {
+      expect(mocks.api).toHaveBeenCalledWith(
+        "/api/organizations/2/members/3/",
+        { method: "DELETE" },
+      );
+    });
+  });
 
   it("hides task edit and comment controls from viewers", async () => {
     mocks.api.mockImplementation(async (endpoint: string) => {
@@ -424,6 +847,88 @@ describe("frontend user flows", () => {
     expect(screen.queryByPlaceholderText("Write a comment")).toBeNull();
   });
 
+  it("lets members edit their own comments and keeps empty comments disabled", async () => {
+    mocks.api.mockImplementation(
+      async (endpoint: string, init?: RequestInit & { json?: unknown }) => {
+        if (endpoint === "/api/tasks/1/") {
+          return {
+            id: 1,
+            project: 7,
+            organization: 2,
+            title: "Draft roadmap",
+            description: "First pass",
+            status: "TODO",
+            priority: "MEDIUM",
+            assigned_to: 5,
+            assigned_to_name: "Avery",
+            created_by: 5,
+            created_by_name: "Avery",
+            due_date: null,
+            created_at: "2026-10-01T10:00:00Z",
+          };
+        }
+        if (endpoint === "/api/organizations/") {
+          return [{ id: 2, name: "Acme", role: "MEMBER" }];
+        }
+        if (endpoint === "/api/auth/me/") {
+          return { id: 5, display_name: "Avery" };
+        }
+        if (endpoint === "/api/organizations/2/members/") {
+          return [
+            {
+              id: 3,
+              user_id: 5,
+              email: "avery@example.com",
+              name: "Avery",
+              role: "MEMBER",
+            },
+          ];
+        }
+        if (endpoint === "/api/tasks/1/comments/") {
+          return [
+            {
+              id: 9,
+              user: 5,
+              user_name: "Avery",
+              content: "Check the milestones.",
+              created_at: "2026-10-02T10:00:00Z",
+              updated_at: "2026-10-02T10:00:00Z",
+            },
+          ];
+        }
+        if (endpoint === "/api/tasks/1/activity/") return [];
+        if (endpoint === "/api/comments/9/" && init?.method === "PATCH") {
+          return undefined;
+        }
+        throw new Error(`Unexpected API call: ${endpoint}`);
+      },
+    );
+    renderTaskPage();
+
+    expect(
+      await screen.findByRole("heading", { name: "Task details" }),
+    ).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    const commentButton = screen.getByRole("button", { name: "Comment" });
+    expect(commentButton).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Edit comment"), {
+      target: { value: "Check dates and milestones." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save comment" }));
+
+    await waitFor(() => {
+      expect(mocks.api).toHaveBeenCalledWith("/api/comments/9/", {
+        method: "PATCH",
+        json: { content: "Check dates and milestones." },
+      });
+    });
+    fireEvent.change(screen.getByPlaceholderText("Write a comment"), {
+      target: { value: "A new note" },
+    });
+    expect(commentButton).toBeEnabled();
+    expect(screen.getAllByText("Avery").length).toBeGreaterThan(0);
+  });
+
   it("receives scoped notifications in the navbar without polling", async () => {
     vi.stubGlobal("WebSocket", MockWebSocket);
     localStorage.setItem("access", "short-lived-access-token");
@@ -454,5 +959,13 @@ describe("frontend user flows", () => {
     expect(
       await screen.findByRole("link", { name: "A teammate commented." }),
     ).toHaveAttribute("href", "/tasks/8");
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Mark notification as read: A teammate commented.",
+      }),
+    );
+    expect(
+      screen.getByRole("button", { name: "Notifications" }),
+    ).toBeInTheDocument();
   });
 });

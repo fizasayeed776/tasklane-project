@@ -5,6 +5,8 @@ import { Suspense, FormEvent, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 import { api, errorMessage } from "@/lib/api";
+import AuthCard from "../components/AuthCard";
+import PasswordField from "../components/PasswordField";
 
 function ResetPasswordForm() {
   const params = useSearchParams();
@@ -44,33 +46,24 @@ function ResetPasswordForm() {
   }
 
   return (
-    <main className="mx-auto mt-24 max-w-sm space-y-4 panel">
-      <h1 className="text-xl font-semibold">Choose a new password</h1>
+    <AuthCard title="Choose a new password">
       <form onSubmit={submit} className="space-y-3">
-        <label className="block space-y-1 text-sm">
-          <span>New password</span>
-          <input
-            className="input"
-            type="password"
-            autoComplete="new-password"
-            minLength={8}
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            required
-          />
-        </label>
-        <label className="block space-y-1 text-sm">
-          <span>Confirm new password</span>
-          <input
-            className="input"
-            type="password"
-            autoComplete="new-password"
-            minLength={8}
-            value={confirmation}
-            onChange={(event) => setConfirmation(event.target.value)}
-            required
-          />
-        </label>
+        <PasswordField
+          id="reset-password"
+          label="New password"
+          autoComplete="new-password"
+          minLength={8}
+          value={password}
+          onChange={setPassword}
+        />
+        <PasswordField
+          id="confirm-reset-password"
+          label="Confirm new password"
+          autoComplete="new-password"
+          minLength={8}
+          value={confirmation}
+          onChange={setConfirmation}
+        />
         {message && (
           <p role="status" className="text-sm">
             {message}
@@ -91,10 +84,13 @@ function ResetPasswordForm() {
           </button>
         )}
       </form>
-      <Link className="text-sm underline" href="/forgot-password">
+      <Link
+        className="inline-flex min-h-10 items-center text-sm underline"
+        href="/forgot-password"
+      >
         Request another reset link
       </Link>
-    </main>
+    </AuthCard>
   );
 }
 
@@ -102,8 +98,10 @@ export default function ResetPasswordPage() {
   return (
     <Suspense
       fallback={
-        <main className="mx-auto mt-24 max-w-sm panel">
-          Loading reset form…
+        <main className="grid min-h-[calc(100vh-2rem)] place-items-center px-4 py-12">
+          <section className="panel w-full max-w-md">
+            Loading reset form…
+          </section>
         </main>
       }
     >

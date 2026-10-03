@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FormEvent, useState } from "react";
 
 import { api, errorMessage } from "@/lib/api";
+import AuthCard from "../components/AuthCard";
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
@@ -32,11 +33,10 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <main className="mx-auto mt-24 max-w-sm space-y-4 panel">
-      <h1 className="text-xl font-semibold">Reset your password</h1>
-      <p className="text-sm">
-        Enter your account email and we’ll send a reset link if it exists.
-      </p>
+    <AuthCard
+      title="Reset your password"
+      description="Enter your account email and we’ll send a reset link if it exists."
+    >
       <form onSubmit={submit} className="space-y-3">
         <label className="block space-y-1 text-sm">
           <span>Email</span>
@@ -63,9 +63,12 @@ export default function ForgotPasswordPage() {
           {submitting ? "Sending…" : "Send reset link"}
         </button>
       </form>
-      <Link className="text-sm underline" href="/login">
+      <Link
+        className="inline-flex min-h-10 items-center text-sm underline"
+        href="/login"
+      >
         Back to log in
       </Link>
-    </main>
+    </AuthCard>
   );
 }
