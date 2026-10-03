@@ -175,7 +175,10 @@ export default function Dashboard() {
             onChange={(e) => setName(e.target.value)}
             required
           />
-          <button className="btn" disabled={createOrg.isPending}>
+          <button
+            className="btn shrink-0 whitespace-nowrap"
+            disabled={createOrg.isPending}
+          >
             Create organization
           </button>
           {createOrg.isError && (
@@ -211,7 +214,9 @@ export default function Dashboard() {
                 onChange={(e) => setPname(e.target.value)}
                 required
               />
-              <button className="btn">Add project</button>
+              <button className="btn shrink-0 whitespace-nowrap">
+                Add project
+              </button>
             </form>
           )}
           {createProject.isError && (
@@ -350,7 +355,10 @@ export default function Dashboard() {
                   <option value="VIEWER">VIEWER</option>
                 </select>
               </label>
-              <button className="btn" disabled={inviteMember.isPending}>
+              <button
+                className="btn shrink-0 whitespace-nowrap"
+                disabled={inviteMember.isPending}
+              >
                 {inviteMember.isPending ? "Inviting…" : "Invite member"}
               </button>
               {inviteMember.isError && (

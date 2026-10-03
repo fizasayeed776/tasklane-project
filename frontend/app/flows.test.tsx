@@ -303,6 +303,16 @@ describe("frontend user flows", () => {
     renderDashboard();
 
     const email = await screen.findByPlaceholderText("Member email");
+    for (const label of [
+      "Create organization",
+      "Add project",
+      "Invite member",
+    ]) {
+      expect(screen.getByRole("button", { name: label })).toHaveClass(
+        "whitespace-nowrap",
+        "shrink-0",
+      );
+    }
     fireEvent.change(email, { target: { value: "new@example.com" } });
     fireEvent.click(screen.getByRole("button", { name: "Invite member" }));
 
