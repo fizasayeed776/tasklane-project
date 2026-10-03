@@ -28,21 +28,29 @@ The HTTP and WebSocket protocols are served by the ASGI application. The API use
 - Docker Desktop / Docker Engine with the Compose plugin
 - Git
 
-1. Create a local environment file and replace the development secrets:
+1. Create a local environment file and replace the example secrets:
 
    ```powershell
    Copy-Item .env.example .env
    ```
 
-   Set `DJANGO_SECRET_KEY` to a unique random value of at least 50 characters and set a strong PostgreSQL password. Do not commit `.env`.
+   `DJANGO_SECRET_KEY` is required and must contain at least 32 characters. Replace the example with a unique random value (50+ characters recommended), and set a strong PostgreSQL password. Do not commit `.env`.
 
-2. Build and start all services:
+2. Build and start all services in the background:
 
    ```powershell
-   docker compose up --build
+   docker compose up --build -d
    ```
 
-   Compose runs PostgreSQL, Redis, the Django ASGI API, Celery worker, Celery Beat, and the Next.js frontend. The backend applies database migrations on startup.
+   Compose waits for PostgreSQL and Redis healthchecks before starting the API, Celery worker, or Beat. PostgreSQL health is checked with the configured `POSTGRES_USER` and `POSTGRES_DB`; Redis health is checked with `redis-cli ping`. The backend applies committed database migrations before starting the ASGI server.
+
+   Check startup status with:
+
+   ```powershell
+   docker compose ps
+   ```
+
+   Wait until the database and Redis report `healthy` and the API, worker, Beat, and frontend report `running`.
 
 3. Open:
    - Web app: <http://localhost:3000>
@@ -53,7 +61,7 @@ Stop services with `docker compose down`. Database data is stored in the named `
 
 ### Environment configuration
 
-`.env.example` documents the supported variables: PostgreSQL database/user/password/host, `DJANGO_SECRET_KEY`, `DJANGO_DEBUG`, allowed hosts, Redis URL, JWT access/refresh lifetimes, email backend/from address, frontend URL, CORS origins, and the public frontend API URL. Local email defaults to Django's console backend. Use a real mail backend and tightly scoped host/CORS settings outside local development.
+`.env.example` documents the supported variables: PostgreSQL database/user/password/host, required `DJANGO_SECRET_KEY` (at least 32 characters), `DJANGO_DEBUG`, allowed hosts, Redis URL, JWT access/refresh lifetimes, email backend/from address, frontend URL, CORS origins, and the public frontend API URL. Local email defaults to Django's console backend. Use a real mail backend and tightly scoped host/CORS settings outside local development.
 
 ## Backend structure and API
 
@@ -154,7 +162,7 @@ npm run format
 npm run build
 ```
 
-Backend tests enforce a minimum 80% coverage threshold. Frontend tests use Vitest, jsdom, and React Testing Library.
+Backend tests enforce a minimum 80% coverage threshold. `pytest.ini` supplies a test-only Django secret so tests can run without the local `.env`; it is never used by application startup. Frontend tests use Vitest, jsdom, and React Testing Library.
 
 ## Key technical decisions and scaling
 
