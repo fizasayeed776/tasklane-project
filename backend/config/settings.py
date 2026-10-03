@@ -1,11 +1,19 @@
 import os
 from datetime import timedelta
 from pathlib import Path
+
 from corsheaders.defaults import default_headers
+from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 env = os.environ.get
-SECRET_KEY = env("DJANGO_SECRET_KEY", "dev-only-secret")
+SECRET_KEY = env("DJANGO_SECRET_KEY", "")
+if not SECRET_KEY or not SECRET_KEY.strip():
+    raise ImproperlyConfigured(
+        "DJANGO_SECRET_KEY must be set to a secret of at least 32 characters."
+    )
+if len(SECRET_KEY) < 32:
+    raise ImproperlyConfigured("DJANGO_SECRET_KEY must be at least 32 characters long.")
 DEBUG = env("DJANGO_DEBUG", "0") == "1"
 ALLOWED_HOSTS = env("ALLOWED_HOSTS", "*").split(",")
 INSTALLED_APPS = [
@@ -108,12 +116,26 @@ SIMPLE_JWT = {
 SPECTACULAR_SETTINGS = {
     "TITLE": "Tasklane API",
     "VERSION": "1.0.0",
+    "ENUM_NAME_OVERRIDES": {
+        "OrganizationRole": [
+            ("OWNER", "OWNER"),
+            ("ADMIN", "ADMIN"),
+            ("MEMBER", "MEMBER"),
+            ("VIEWER", "VIEWER"),
+        ],
+        "OrganizationAssignableRole": [
+            ("ADMIN", "ADMIN"),
+            ("MEMBER", "MEMBER"),
+            ("VIEWER", "VIEWER"),
+        ],
+    },
     "POSTPROCESSING_HOOKS": [
         "drf_spectacular.hooks.postprocess_schema_enums",
         "config.openapi.add_error_responses",
     ],
 }
 CELERY_BROKER_URL = env("REDIS_URL", "redis://localhost:6379/0")
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
