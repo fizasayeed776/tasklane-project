@@ -1,6 +1,7 @@
 import os
 from datetime import timedelta
 from pathlib import Path
+from corsheaders.defaults import default_headers
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 env = os.environ.get
@@ -77,6 +78,7 @@ AUTH_PASSWORD_VALIDATORS = [
 STATIC_URL = "static/"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 CORS_ALLOWED_ORIGINS = env("CORS_ORIGINS", "http://localhost:3000").split(",")
+CORS_ALLOW_HEADERS = (*default_headers, "x-organization-id")
 FRONTEND_URL = env("FRONTEND_URL", "http://localhost:3000")
 EMAIL_BACKEND = env("EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend")
 DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", "noreply@pmp.local")
