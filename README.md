@@ -288,33 +288,33 @@ Backend tests enforce a minimum 80% coverage threshold. `pytest.ini` supplies a 
 
 ## Screenshots
 
-### Authentication
+### Registration
 
-![Authentication](docs/screenshots/01-login.png)
+![Registration form](docs/screenshots/01-register.png)
 
-### Dashboard: stats, projects, recent activity
+### Dashboard — stats, projects, recent activity, and organization management
 
-![Dashboard: stats, projects, recent activity](docs/screenshots/02-dashboard.png)
+![Dashboard showing stats, projects, recent activity, org members, and danger zone](docs/screenshots/02-dashboard.png)
 
-### Members and roles
+### Viewer role — dashboard with member list and role badges
 
-![Members and roles](docs/screenshots/03-members-roles.png)
+![Viewer role dashboard showing project list, recent activity, member list with Owner and Viewer badges, and Leave organization button](docs/screenshots/03-viewer-dashboard.png)
 
-### Kanban board
+### Project board — Kanban view with task filters
 
-![Kanban board](docs/screenshots/05-kanban.png)
+![Project board with four-column Kanban layout, task filters, and New task button](docs/screenshots/05-kanban.png)
 
 ### New task modal
 
-![New task modal](docs/screenshots/06-new-task.png)
+![New task modal with title, description, priority, assignee, and due date fields](docs/screenshots/06-new-task.png)
 
-### Task detail with comments and activity history
+### Task detail — comments and activity history
 
-![Task detail with comments and activity history](docs/screenshots/07-task-detail.png)
+![Task detail page showing task metadata, comments section, and activity history](docs/screenshots/07-task-detail.png)
 
-### Swagger/OpenAPI documentation
+### REST API — Swagger UI endpoint list
 
-![Swagger/OpenAPI documentation](docs/screenshots/10-swagger.png)
+![Swagger UI showing all REST endpoints grouped by resource](docs/screenshots/10-swagger.png)
 
 ### Demo walkthrough
 
