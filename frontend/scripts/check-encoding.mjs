@@ -4,7 +4,9 @@
  *
  * Fails if any git-tracked text file in the repository:
  *   1. Is not valid UTF-8, OR
- *   2. Contains mojibake sequences such as "ΓÇ" or "â€"
+ *   2. Contains mojibake sequences (e.g. the CP1252 smart-quote pattern
+ *      that appears as a 3-byte sequence starting with U+0393 + U+00C7,
+ *      or the euro-sign pattern starting with U+00E2 + U+20AC)
  *      (Windows-1252 bytes decoded as Latin-1 then re-encoded as UTF-8)
  *
  * Usage:
@@ -47,13 +49,19 @@ const BINARY_EXTENSIONS = new Set([
   ".coverage",
 ]);
 
-// Known mojibake patterns (Windows-1252 / Latin-1 decoded as UTF-8)
+// Known mojibake patterns (Windows-1252 / Latin-1 decoded as UTF-8).
+// Patterns use Unicode escapes so this file does not trigger its own check.
 const MOJIBAKE_PATTERNS = [
-  /ΓÇ/u, // U+0393 + U+00C7 — common CP1252 smart-quote mojibake
-  /â€/u, // U+00E2 + U+20AC — another CP1252 pattern
-  /Ã©/u, // é in CP1252 decoded as Latin-1
-  /â‚¬/u, // € mojibake
-  /Ã\u00a0/u, // non-breaking-space mojibake
+  // U+0393 (Γ) followed by U+00C7 (Ç) — CP1252 smart-quote as UTF-8 mojibake
+  new RegExp("\u0393\u00c7", "u"),
+  // U+00E2 (â) followed by U+20AC (€) — CP1252 euro/curly-quote mojibake
+  new RegExp("\u00e2\u20ac", "u"),
+  // U+00C3 (Ã) followed by U+00A9 (©) — CP1252 é mojibake
+  new RegExp("\u00c3\u00a9", "u"),
+  // U+00E2 (â) + U+201A (‚) + U+00AC (¬) — € variant mojibake
+  new RegExp("\u00e2\u201a\u00ac", "u"),
+  // U+00C3 (Ã) followed by NBSP — non-breaking-space mojibake
+  new RegExp("\u00c3\u00a0", "u"),
 ];
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
