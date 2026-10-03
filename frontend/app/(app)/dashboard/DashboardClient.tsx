@@ -21,6 +21,12 @@ import AccessibleDialog from "../../components/AccessibleDialog";
 import QueryError from "../../components/QueryError";
 import { useToast } from "../../components/ToastProvider";
 
+type CurrentUser = {
+  email: string;
+  first_name?: string;
+  display_name?: string;
+};
+
 type ProjectTaskPage = {
   count: number;
   next: string | null;
@@ -58,10 +64,10 @@ async function projectTaskSummary(projectId: number) {
 }
 
 function activityGlyph(verb: string) {
-  if (verb.includes("assigned")) return "↗";
-  if (verb.includes("status")) return "↻";
-  if (verb.includes("comment")) return "“";
-  return "＋";
+  if (verb.includes("assigned")) return "Γåù";
+  if (verb.includes("status")) return "Γå╗";
+  if (verb.includes("comment")) return "\u201c";
+  return "∩╝ï";
 }
 
 export default function Dashboard() {
@@ -79,6 +85,12 @@ export default function Dashboard() {
   const [invitePanelOpen, setInvitePanelOpen] = useState(false);
   const [memberPendingRemoval, setMemberPendingRemoval] =
     useState<OrgMember | null>(null);
+  // Ownership management state
+  const [transferTarget, setTransferTarget] = useState<OrgMember | null>(null);
+  const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteNameInput, setDeleteNameInput] = useState("");
+
   const orgs = useQuery<Org[]>({
     queryKey: ["orgs"],
     queryFn: () => api("/api/organizations/"),
@@ -91,6 +103,22 @@ export default function Dashboard() {
     },
     [qc],
   );
+
+  // After leaving or deleting, switch to next available org or clear
+  const switchAwayFrom = useCallback(
+    (deletedOrgId: string) => {
+      const next = orgs.data?.find((o) => String(o.id) !== deletedOrgId);
+      if (next) {
+        pick(String(next.id));
+      } else {
+        setOrganization("");
+        setOrg("");
+        qc.invalidateQueries();
+      }
+    },
+    [orgs.data, pick, qc],
+  );
+
   useEffect(() => {
     const saved = localStorage.getItem("org");
     if (
@@ -109,6 +137,13 @@ export default function Dashboard() {
       window.removeEventListener("tasklane:organization", syncOrganization);
   }, []);
   const role = orgs.data?.find((o) => String(o.id) === org)?.role;
+  const orgName = orgs.data?.find((o) => String(o.id) === org)?.name ?? "";
+  const me = useQuery<CurrentUser>({
+    queryKey: ["me"],
+    queryFn: () => api("/api/auth/me/"),
+  });
+  const displayName =
+    me.data?.display_name || me.data?.first_name || me.data?.email;
   const members = useQuery<OrgMember[]>({
     queryKey: ["members", org],
     queryFn: () => api(`/api/organizations/${org}/members/`),
@@ -214,6 +249,61 @@ export default function Dashboard() {
     },
     onError: (error) => toast("error", errorMessage(error)),
   });
+
+  // --- Ownership management mutations ---
+  const transferOwnership = useMutation({
+    mutationFn: (memberId: number) =>
+      api(`/api/organizations/${org}/transfer-ownership/`, {
+        method: "POST",
+        json: { member_id: memberId },
+      }),
+    onSuccess: async () => {
+      setTransferTarget(null);
+      await qc.invalidateQueries({ queryKey: ["orgs"] });
+      await qc.invalidateQueries({ queryKey: ["members", org] });
+      toast("success", "Ownership transferred successfully.");
+    },
+    onError: (error) => {
+      setTransferTarget(null);
+      toast("error", errorMessage(error));
+    },
+  });
+
+  const leaveOrganization = useMutation({
+    mutationFn: () =>
+      api(`/api/organizations/${org}/leave/`, { method: "POST" }),
+    onSuccess: async () => {
+      setLeaveConfirmOpen(false);
+      const leftOrg = org;
+      await qc.invalidateQueries({ queryKey: ["orgs"] });
+      switchAwayFrom(leftOrg);
+      toast("success", "You have left the organization.");
+    },
+    onError: (error) => {
+      setLeaveConfirmOpen(false);
+      toast("error", errorMessage(error));
+    },
+  });
+
+  const deleteOrganization = useMutation({
+    mutationFn: () =>
+      api(`/api/organizations/${org}/`, {
+        method: "DELETE",
+        json: { name: deleteNameInput },
+      }),
+    onSuccess: async () => {
+      setDeleteConfirmOpen(false);
+      setDeleteNameInput("");
+      const deletedOrg = org;
+      await qc.invalidateQueries({ queryKey: ["orgs"] });
+      switchAwayFrom(deletedOrg);
+      toast("success", "Organization deleted.");
+    },
+    onError: (error) => {
+      toast("error", errorMessage(error));
+    },
+  });
+
   const queryError =
     orgs.error ??
     members.error ??
@@ -242,7 +332,14 @@ export default function Dashboard() {
   ];
   return (
     <main className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:py-8">
-      <h1 className="page-title text-[28px] font-semibold">Dashboard</h1>
+      <div className="space-y-0.5">
+        <h1 className="page-title text-[28px] font-semibold">Dashboard</h1>
+        {displayName && role && (
+          <p className="text-sm text-muted">
+            {displayName} &middot; You are a {roleLabel(role)}
+          </p>
+        )}
+      </div>
       {orgs.data && (orgs.data.length === 0 || (!!org && canManage(role))) && (
         <form
           className="flex flex-wrap gap-2"
@@ -265,7 +362,7 @@ export default function Dashboard() {
             className="btn shrink-0 whitespace-nowrap"
             disabled={createOrg.isPending}
           >
-            {createOrg.isPending ? "Creating…" : "Create organization"}
+            {createOrg.isPending ? "CreatingΓÇª" : "Create organization"}
           </button>
           {createOrg.isError && (
             <p role="alert" className="text-sm text-warn">
@@ -286,7 +383,7 @@ export default function Dashboard() {
             <p
               className={`text-xl font-semibold tabular-nums ${label === "Overdue" && (value ?? 0) > 0 ? "text-danger" : ""}`}
             >
-              {value ?? "–"}
+              {value ?? "ΓÇô"}
             </p>
             <p className="text-xs text-muted">{label}</p>
           </div>
@@ -331,7 +428,7 @@ export default function Dashboard() {
                       {project.status === "ACTIVE" ? "Active" : "Archived"}
                     </span>
                     <span className="text-sm text-muted">
-                      {summary ? summary.count : "–"} tasks
+                      {summary ? summary.count : "ΓÇô"} tasks
                     </span>
                     <span className="text-xs text-muted">
                       {summary?.latestTaskChange
@@ -421,6 +518,7 @@ export default function Dashboard() {
                   (role === "OWNER" ||
                     member.role === "MEMBER" ||
                     member.role === "VIEWER");
+                const canTransfer = role === "OWNER" && member.role !== "OWNER";
                 return (
                   <li
                     key={member.id}
@@ -451,6 +549,7 @@ export default function Dashboard() {
                         </label>
                         <select
                           id={`member-role-${member.id}`}
+                          aria-label="Member role"
                           className="input ml-auto w-auto"
                           value={member.role}
                           disabled={changeMemberRole.isPending}
@@ -476,6 +575,16 @@ export default function Dashboard() {
                           Remove
                         </button>
                       </div>
+                    )}
+                    {canTransfer && (
+                      <button
+                        type="button"
+                        aria-label={`Transfer ownership to ${member.name}`}
+                        className="min-h-10 rounded-md border border-line px-3 py-1.5 text-sm"
+                        onClick={() => setTransferTarget(member)}
+                      >
+                        Transfer ownership
+                      </button>
                     )}
                   </li>
                 );
@@ -537,7 +646,7 @@ export default function Dashboard() {
                     className="btn shrink-0 whitespace-nowrap"
                     disabled={inviteMember.isPending}
                   >
-                    {inviteMember.isPending ? "Inviting…" : "Send invitation"}
+                    {inviteMember.isPending ? "InvitingΓÇª" : "Send invitation"}
                   </button>
                   {inviteMember.isError && (
                     <p role="alert" className="w-full text-sm text-danger">
@@ -558,8 +667,51 @@ export default function Dashboard() {
               {errorMessage(changeMemberRole.error || removeMember.error)}
             </p>
           )}
+
+          {/* Danger zone ΓÇö leave (non-owners) or delete (owner) */}
+          {org && role && (
+            <div className="mt-4 rounded-lg border border-danger/30 p-4">
+              <h3 className="text-sm font-semibold text-danger">Danger zone</h3>
+              {role !== "OWNER" ? (
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium">Leave organization</p>
+                    <p className="text-xs text-muted">
+                      You will lose access to all projects in this workspace.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="min-h-10 rounded-md border border-danger/40 px-4 text-sm font-medium text-danger"
+                    onClick={() => setLeaveConfirmOpen(true)}
+                  >
+                    Leave organization
+                  </button>
+                </div>
+              ) : (
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium">Delete organization</p>
+                    <p className="text-xs text-muted">
+                      Permanently deletes all projects, tasks, and data. This
+                      cannot be undone.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="min-h-10 rounded-md bg-danger px-4 text-sm font-medium text-white"
+                    onClick={() => setDeleteConfirmOpen(true)}
+                  >
+                    Delete organization
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </section>
       )}
+
+      {/* ΓöÇΓöÇ New project dialog ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */}
       {projectModalOpen && (
         <AccessibleDialog
           labelledBy="new-project-title"
@@ -603,12 +755,14 @@ export default function Dashboard() {
                 Cancel
               </button>
               <button className="btn" disabled={createProject.isPending}>
-                {createProject.isPending ? "Creating…" : "Create project"}
+                {createProject.isPending ? "CreatingΓÇª" : "Create project"}
               </button>
             </div>
           </form>
         </AccessibleDialog>
       )}
+
+      {/* ΓöÇΓöÇ Remove member confirmation ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */}
       {memberPendingRemoval && (
         <AccessibleDialog
           labelledBy="remove-member-title"
@@ -636,7 +790,144 @@ export default function Dashboard() {
               disabled={removeMember.isPending}
               onClick={() => removeMember.mutate(memberPendingRemoval.id)}
             >
-              {removeMember.isPending ? "Removing…" : "Remove member"}
+              {removeMember.isPending ? "RemovingΓÇª" : "Remove member"}
+            </button>
+          </div>
+        </AccessibleDialog>
+      )}
+
+      {/* ΓöÇΓöÇ Transfer ownership confirmation ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */}
+      {transferTarget && (
+        <AccessibleDialog
+          labelledBy="transfer-ownership-title"
+          className="max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-xl border border-line bg-surface p-6 shadow-modal"
+          onClose={() => setTransferTarget(null)}
+          role="alertdialog"
+        >
+          <h2 id="transfer-ownership-title" className="font-semibold">
+            Transfer ownership to {transferTarget.name}?
+          </h2>
+          <p className="mt-2 text-sm text-muted">
+            {transferTarget.name} will become the new owner. You will be
+            downgraded to Admin and will no longer be able to transfer
+            ownership, delete the organization, or manage admins.
+          </p>
+          <div className="mt-5 flex justify-end gap-2">
+            <button
+              className="min-h-10 rounded-md border border-line px-4"
+              type="button"
+              onClick={() => setTransferTarget(null)}
+            >
+              Cancel
+            </button>
+            <button
+              className="btn"
+              type="button"
+              disabled={transferOwnership.isPending}
+              onClick={() => transferOwnership.mutate(transferTarget.id)}
+            >
+              {transferOwnership.isPending
+                ? "TransferringΓÇª"
+                : "Transfer ownership"}
+            </button>
+          </div>
+        </AccessibleDialog>
+      )}
+
+      {/* ΓöÇΓöÇ Leave organization confirmation ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */}
+      {leaveConfirmOpen && (
+        <AccessibleDialog
+          labelledBy="leave-org-title"
+          className="max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-xl border border-line bg-surface p-6 shadow-modal"
+          onClose={() => setLeaveConfirmOpen(false)}
+          role="alertdialog"
+        >
+          <h2 id="leave-org-title" className="font-semibold">
+            Leave {orgName}?
+          </h2>
+          <p className="mt-2 text-sm text-muted">
+            You will lose access to all projects and tasks in this organization.
+            Your assigned tasks will be unassigned.
+          </p>
+          <div className="mt-5 flex justify-end gap-2">
+            <button
+              className="min-h-10 rounded-md border border-line px-4"
+              type="button"
+              onClick={() => setLeaveConfirmOpen(false)}
+            >
+              Cancel
+            </button>
+            <button
+              className="min-h-10 rounded-md bg-danger-surface px-4 font-medium text-on-danger"
+              type="button"
+              disabled={leaveOrganization.isPending}
+              onClick={() => leaveOrganization.mutate()}
+            >
+              {leaveOrganization.isPending
+                ? "LeavingΓÇª"
+                : "Leave organization"}
+            </button>
+          </div>
+        </AccessibleDialog>
+      )}
+
+      {/* ΓöÇΓöÇ Delete organization confirmation ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */}
+      {deleteConfirmOpen && (
+        <AccessibleDialog
+          labelledBy="delete-org-title"
+          className="max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-xl border border-line bg-surface p-6 shadow-modal"
+          onClose={() => {
+            setDeleteConfirmOpen(false);
+            setDeleteNameInput("");
+          }}
+          role="alertdialog"
+        >
+          <h2 id="delete-org-title" className="font-semibold text-danger">
+            Delete {orgName}?
+          </h2>
+          <p className="mt-2 text-sm text-muted">
+            This will permanently delete the organization and all its projects,
+            tasks, comments, and activity. This action cannot be undone.
+          </p>
+          <label className="mt-4 block space-y-1 text-sm">
+            <span>
+              Type <strong>{orgName}</strong> to confirm
+            </span>
+            <input
+              className="input w-full"
+              aria-label="Organization name confirmation"
+              value={deleteNameInput}
+              onChange={(e) => setDeleteNameInput(e.target.value)}
+              autoComplete="off"
+            />
+          </label>
+          {deleteOrganization.isError && (
+            <p role="alert" className="mt-2 text-sm text-danger">
+              {errorMessage(deleteOrganization.error)}
+            </p>
+          )}
+          <div className="mt-5 flex justify-end gap-2">
+            <button
+              className="min-h-10 rounded-md border border-line px-4"
+              type="button"
+              onClick={() => {
+                setDeleteConfirmOpen(false);
+                setDeleteNameInput("");
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              className="min-h-10 rounded-md bg-danger px-4 font-medium text-white disabled:opacity-50"
+              type="button"
+              disabled={
+                deleteNameInput !== orgName || deleteOrganization.isPending
+              }
+              onClick={() => deleteOrganization.mutate()}
+            >
+              {deleteOrganization.isPending
+                ? "DeletingΓÇª"
+                : "Delete organization"}
             </button>
           </div>
         </AccessibleDialog>

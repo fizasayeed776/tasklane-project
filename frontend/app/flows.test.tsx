@@ -205,9 +205,14 @@ describe("frontend user flows", () => {
     renderAppShell();
 
     const switcher = screen.getByRole("button", {
-      name: "Organization switcher",
+      name: /Organization switcher/,
     });
-    await waitFor(() => expect(switcher).toHaveTextContent("Acme"));
+    await waitFor(() => {
+      expect(switcher).toHaveTextContent("Acme");
+      expect(switcher).toHaveAccessibleName(
+        "Organization switcher. Your role: Owner",
+      );
+    });
     const organizationChevron = switcher.querySelector("svg");
     expect(organizationChevron).toHaveAttribute("aria-hidden", "true");
     expect(organizationChevron).toHaveAttribute("focusable", "false");
@@ -219,16 +224,72 @@ describe("frontend user flows", () => {
       "transition-transform",
       "duration-150",
     );
-    fireEvent.click(
-      screen.getByRole("button", { name: "Organization switcher" }),
-    );
+    fireEvent.click(switcher);
     expect(organizationChevron).toHaveClass("rotate-180");
+    // Caption "Organization" should appear at the top of the dropdown
     expect(
-      screen.getByRole("menuitem", { name: /Studio.*Viewer/ }),
+      screen.getByText("Organization", { selector: "p" }),
     ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("menuitem", { name: /Studio.*Viewer/ }));
+    // Each item shows the org name and a "You are the <Role>" subtitle
+    expect(
+      screen.getByRole("menuitem", { name: /Studio.*You are the Viewer/ }),
+    ).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: /Studio.*You are the Viewer/ }),
+    );
 
     await waitFor(() => expect(localStorage.getItem("org")).toBe("3"));
+  });
+
+  it("shows the user name and role context in the dashboard heading", async () => {
+    localStorage.setItem("org", "2");
+    mocks.api.mockImplementation(async (endpoint: string) => {
+      if (endpoint === "/api/organizations/") {
+        return [{ id: 2, name: "Acme", role: "VIEWER" }];
+      }
+      if (endpoint === "/api/auth/me/") {
+        return { id: 5, email: "aqsa@example.com", display_name: "Aqsa Akram" };
+      }
+      if (endpoint === "/api/organizations/2/members/") return [];
+      if (endpoint === "/api/dashboard/") return {};
+      if (endpoint === "/api/projects/?ordering=-created_at")
+        return { results: [] };
+      if (endpoint === "/api/activity/") return [];
+      throw new Error(`Unexpected API call: ${endpoint}`);
+    });
+    renderDashboard();
+
+    expect(
+      await screen.findByRole("heading", { name: "Dashboard" }),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText(/Aqsa Akram.*You are a Viewer/),
+    ).toBeInTheDocument();
+  });
+
+  it("shows a disambiguator for organizations with the same name", async () => {
+    localStorage.setItem("org", "2");
+    mocks.api.mockImplementation(async (endpoint: string) => {
+      if (endpoint === "/api/organizations/") {
+        return [
+          { id: 2, name: "Acme", role: "OWNER" },
+          { id: 7, name: "Acme", role: "MEMBER" },
+        ];
+      }
+      if (endpoint === "/api/auth/me/") {
+        return { id: 5, email: "owner@example.com", display_name: "Avery" };
+      }
+      throw new Error(`Unexpected API call: ${endpoint}`);
+    });
+    renderAppShell();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Organization switcher/ }),
+    );
+
+    // Both orgs share the name "Acme", so each item should show an "#id" disambiguator
+    expect(screen.getByText("#2")).toBeInTheDocument();
+    expect(screen.getByText("#7")).toBeInTheDocument();
   });
 
   it("keeps navbar dropdowns exclusive, dismissible, and keyboard accessible", async () => {

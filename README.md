@@ -91,7 +91,7 @@ The REST API is rooted at `/api/`:
 | Resource | Routes |
 | --- | --- |
 | Authentication | `/api/auth/register/`, `/api/auth/login/`, `/api/auth/refresh/`, `/api/auth/logout/`, `/api/auth/me/`, `/api/auth/password/change/`, `/api/auth/email/change/`, `/api/auth/password/forgot/`, `/api/auth/password/reset/` |
-| Organizations | `/api/organizations/`, `/api/organizations/{id}/`, `/api/organizations/{id}/members/` (GET/POST), `/api/organizations/{id}/members/{member_id}/` (PATCH/DELETE), `/api/organizations/{id}/projects/` |
+| Organizations | `/api/organizations/`, `/api/organizations/{id}/` (GET/DELETE), `/api/organizations/{id}/members/` (GET/POST), `/api/organizations/{id}/members/{member_id}/` (PATCH/DELETE), `/api/organizations/{id}/projects/`, `/api/organizations/{id}/transfer-ownership/` (POST), `/api/organizations/{id}/leave/` (POST) |
 | Projects | `/api/projects/`, `/api/projects/{id}/` |
 | Tasks | `/api/tasks/`, `/api/tasks/{id}/`, `/api/tasks/{id}/comments/`, `/api/tasks/{id}/activity/` |
 | Comments | `/api/comments/{id}/` (PATCH/DELETE) |
@@ -163,10 +163,10 @@ Roles are ordered `OWNER > ADMIN > MEMBER > VIEWER`. The API independently enfor
 
 | Role | Capabilities |
 | --- | --- |
-| OWNER | Full organization administration; manage projects and members including admins; create tasks and comments; update and delete tasks; read organization data. The owner membership itself cannot be changed or removed. |
-| ADMIN | Manage projects; invite, change, and remove MEMBER/VIEWER memberships; create tasks and comments; update and delete tasks; read organization data. Cannot manage OWNER or ADMIN memberships or grant ADMIN. |
-| MEMBER | Read organization data; create tasks and comments; update tasks they created or are assigned to; edit/delete their own comments. Cannot manage members/projects or delete tasks. |
-| VIEWER | Read organization data; cannot create tasks/comments, edit tasks/projects, or manage memberships. The API permits an author to edit/delete only their own existing comments, including after a role change. |
+| OWNER | Full organization administration; manage projects and members including admins; create tasks and comments; update and delete tasks; read organization data. The owner membership itself cannot be changed or removed via the normal member endpoints. OWNER may transfer ownership to another member (they become OWNER, the former owner becomes ADMIN), and may delete the organization with a name-confirmation body. |
+| ADMIN | Manage projects; invite, change, and remove MEMBER/VIEWER memberships; create tasks and comments; update and delete tasks; read organization data. Cannot manage OWNER or ADMIN memberships or grant ADMIN. May leave the organization. |
+| MEMBER | Read organization data; create tasks and comments; update tasks they created or are assigned to; edit/delete their own comments. Cannot manage members/projects or delete tasks. May leave the organization. |
+| VIEWER | Read organization data; cannot create tasks/comments, edit tasks/projects, or manage memberships. The API permits an author to edit/delete only their own existing comments, including after a role change. May leave the organization. |
 
 No role can change or remove their own membership. Comment authors can edit/delete their own comments; OWNER/ADMIN can moderate comment deletion. Account email and password changes are account-level operations available to any authenticated user, regardless of organization role. The frontend hides controls according to role, but authorization is enforced by the API.
 
@@ -179,6 +179,18 @@ Organization members are managed from the dashboard for the selected organizatio
 Registration validates a supplied invitation token against the registering email. Registration without a token and successful login also accept active pending invitations for that email, so an invitee who opens the ordinary registration page or already has an account still joins the organization. Acceptance creates the membership with the invited role and marks the invitation used. Expired, unknown, email-mismatched, and already-used tokens are rejected. The resulting membership appears in that user's organization dropdown; role-based controls are hidden in the UI and remain protected by API authorization.
 
 Member role changes and removals use `PATCH` and `DELETE` on `/api/organizations/{id}/members/{member_id}/`. These operations resolve the member inside the caller's organization, returning 404 for cross-organization IDs. The API schema documents their path IDs, JWT authentication, request body, success responses, and standard error envelope.
+
+### Ownership management
+
+Three additional organization-lifecycle endpoints enforce the OWNER invariant — every organization always has exactly one OWNER at all times.
+
+**Transfer ownership** — `POST /api/organizations/{id}/transfer-ownership/` with `{"member_id": <id>}`. Only the current OWNER may call this. The target must be an existing member of the same organization (pending invitations and cross-organization IDs return 404). In a single atomic transaction the target becomes OWNER, the caller is demoted to ADMIN, and `Organization.owner` is updated. An activity entry with verb `ownership_transferred` is written. Non-owners receive 403; non-members receive 404.
+
+**Leave organization** — `POST /api/organizations/{id}/leave/`. Any member with role ADMIN, MEMBER, or VIEWER may leave. The OWNER must transfer ownership first; calling leave as OWNER returns 400 with a message explaining the requirement. On success the membership row is deleted and any tasks assigned to the leaving user within that organization are unassigned (`assigned_to` set to null). The operation is silent to other members; no activity entry is written.
+
+**Delete organization** — `DELETE /api/organizations/{id}/` with `{"name": "<exact organization name>"}`. Only the OWNER may call this. The body must contain the organization name exactly as stored (case-sensitive); a mismatch returns 400. A successful delete cascades all related data in one transaction: projects, tasks, comments, activity entries, pending invitations, and all memberships. No orphaned records remain. Non-owners receive 403; non-members receive 404.
+
+The dashboard members section and the account settings page both surface these operations with confirmation dialogs: transfer ownership names the new owner; leave shows an unassignment warning; delete requires typing the organization name and keeps the confirm button disabled until the input matches.
 
 Errors use the shared response envelope:
 
@@ -260,6 +272,8 @@ Backend tests enforce a minimum 80% coverage threshold. `pytest.ini` supplies a 
 
 - **Services instead of signals:** explicit task services own activity writes and transactional side effects. This keeps actor and old-value context available, makes transaction timing explicit, and avoids hidden signal behavior.
 - **Why selectors:** selectors centralize tenant-scoped read/query behavior, reducing the chance that a view accidentally returns cross-organization data. Services separately own business rules and writes.
+- **Ownership invariant:** transfer, leave, and delete are each implemented as atomic transactions so every organization always has exactly one OWNER record. The `Organization.owner` FK and the `OrganizationMember.role == OWNER` row are updated together inside `transfer_ownership`; the normal member PATCH/DELETE endpoints still block role changes to/from OWNER so neither path can accidentally create a second OWNER or leave an organization ownerless.
+- **Delete uses a name-confirmation body:** `DELETE /api/organizations/{id}/` requires `{"name": "<org name>"}` to prevent accidental cascade deletion through scripting or browser bugs. The API validates the name server-side so the frontend confirmation dialog is defense-in-depth, not the only gate.
 - **Token storage:** the current frontend stores JWTs in browser `localStorage`, matching the browser-only authentication helper and preserving the existing authentication model. This JavaScript-readable storage has XSS exposure and is not claimed to be ideal for production.
 - **Future authentication improvement:** fetching private data in Server Components would require moving authentication to secure `httpOnly` cookies and addressing CSRF/session behavior. That change is not implemented.
 - **Tenant boundaries:** tenant filtering is enforced in selectors, then write roles are checked in services. Client-supplied organization context is never an authorization grant.
