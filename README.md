@@ -247,6 +247,8 @@ Set-Location frontend
 npm ci
 npm test
 npm run lint
+npm run format
+npm run format:check
 npm run build
 ```
 
