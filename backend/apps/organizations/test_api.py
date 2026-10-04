@@ -774,6 +774,50 @@ def test_viewer_can_leave_organization(org_world):
     assert response.status_code == 204
 
 
+def test_removing_member_unassigns_only_tasks_in_that_organization(org_world):
+    from apps.tasks.models import Task
+
+    member = User.objects.create_user("removed@example.com", "StrongPass!234")
+    membership = OrganizationMember.objects.create(
+        organization=org_world["org"], user=member, role=OrganizationMember.Role.MEMBER
+    )
+    OrganizationMember.objects.create(
+        organization=org_world["other_org"],
+        user=member,
+        role=OrganizationMember.Role.VIEWER,
+    )
+    task = Task.objects.create(
+        project=Project.objects.create(
+            organization=org_world["org"],
+            name="Member project",
+            created_by=org_world["owner"],
+        ),
+        title="Assigned in removed organization",
+        created_by=org_world["owner"],
+        assigned_to=member,
+    )
+    other_task = Task.objects.create(
+        project=Project.objects.create(
+            organization=org_world["other_org"],
+            name="Other organization project",
+            created_by=org_world["outsider"],
+        ),
+        title="Assigned elsewhere",
+        created_by=org_world["outsider"],
+        assigned_to=member,
+    )
+
+    response = client_for(org_world["owner"]).delete(
+        f"/api/organizations/{org_world['org'].id}/members/{membership.id}/"
+    )
+
+    assert response.status_code == 204
+    task.refresh_from_db()
+    other_task.refresh_from_db()
+    assert task.assigned_to is None
+    assert other_task.assigned_to_id == member.id
+
+
 def test_admin_can_leave_organization(org_world):
     admin = User.objects.create_user("admin@example.com", "StrongPass!234")
     OrganizationMember.objects.create(

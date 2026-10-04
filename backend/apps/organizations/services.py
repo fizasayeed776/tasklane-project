@@ -28,6 +28,14 @@ def ensure_role(user, org_id, minimum):
     return role
 
 
+def _unassign_tasks_in_organization(user, org):
+    from apps.tasks.models import Task
+
+    Task.objects.filter(project__organization=org, assigned_to=user).update(
+        assigned_to=None
+    )
+
+
 @transaction.atomic
 def create_organization(user, name):
     org = Organization.objects.create(
@@ -169,6 +177,7 @@ def remove_member(actor, org, member):
         raise PermissionDenied("The organization owner cannot be removed.")
     if actor_role != R.OWNER and member.role not in {R.MEMBER, R.VIEWER}:
         raise PermissionDenied("Admins can only manage members and viewers.")
+    _unassign_tasks_in_organization(member.user, org)
     member.delete()
 
 
@@ -248,13 +257,7 @@ def leave_organization(actor, org):
             }
         )
 
-    # Unassign tasks this user owns in this organization
-    from apps.tasks.models import Task
-
-    Task.objects.filter(project__organization=org, assigned_to=actor).update(
-        assigned_to=None
-    )
-
+    _unassign_tasks_in_organization(actor, org)
     membership.delete()
 
 

@@ -1,5 +1,4 @@
-from datetime import date
-
+from django.utils import timezone
 from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -204,7 +203,7 @@ class DashboardView(APIView):
                 "total_tasks": tasks.count(),
                 "assigned_to_me": tasks.filter(assigned_to=request.user).count(),
                 "completed": tasks.filter(status="DONE").count(),
-                "overdue": tasks.filter(due_date__lt=date.today())
+                "overdue": tasks.filter(due_date__lt=timezone.localdate())
                 .exclude(status="DONE")
                 .count(),
             }
