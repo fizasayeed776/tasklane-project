@@ -457,12 +457,19 @@ export default function TaskClient({ id }: { id: string }) {
           <details className="panel group">
             <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent">
               Activity history
-              <span
+              <svg
                 aria-hidden="true"
-                className="text-sm text-muted transition-transform group-open:rotate-180"
+                focusable="false"
+                className="size-4 text-muted transition-transform group-open:rotate-180"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
               >
-                ⌄
-              </span>
+                <path d="M4 6l4 4 4-4" />
+              </svg>
             </summary>
             <ul className="mt-4 space-y-4 border-t border-line pt-4">
               {activityList.map((item) => (

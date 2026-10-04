@@ -1201,6 +1201,11 @@ describe("frontend user flows", () => {
     expect(
       await screen.findByRole("heading", { name: "Comments" }),
     ).toBeInTheDocument();
+    const activitySummary = screen
+      .getByText("Activity history")
+      .closest("summary");
+    expect(activitySummary?.querySelector("svg")).not.toBeNull();
+    expect(activitySummary?.textContent).not.toContain("\u2304");
     expect(
       screen.queryByRole("button", { name: "Edit task" }),
     ).not.toBeInTheDocument();
