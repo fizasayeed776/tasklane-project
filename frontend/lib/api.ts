@@ -45,10 +45,28 @@ export class ApiError extends Error {
     public code: string,
     message: string,
     public status: number,
+    public fields?: Record<string, string[]>,
   ) {
     super(message);
     this.name = "ApiError";
   }
+}
+
+export function apiFieldErrors(error: unknown): Record<string, string[]> {
+  return error instanceof ApiError ? (error.fields ?? {}) : {};
+}
+
+export function apiFormErrorMessage(
+  error: unknown,
+  handledFields: string[],
+): string {
+  const fields = apiFieldErrors(error);
+  const globalError = Object.entries(fields).find(
+    ([field]) => !handledFields.includes(field),
+  )?.[1]?.[0];
+  if (globalError) return globalError;
+  if (Object.keys(fields).length > 0) return "";
+  return errorMessage(error);
 }
 
 export function errorMessage(error: unknown): string {
@@ -140,12 +158,21 @@ export async function api<T = any>(
   if (!res.ok) {
     const error =
       data && typeof data === "object" && "error" in data
-        ? (data as { error?: { code?: string; message?: string } }).error
+        ? (
+            data as {
+              error?: {
+                code?: string;
+                message?: string;
+                fields?: Record<string, string[]>;
+              };
+            }
+          ).error
         : undefined;
     throw new ApiError(
       error?.code ?? "ERROR",
       error?.message ?? "Request failed",
       res.status,
+      error?.fields,
     );
   }
   return data as T;

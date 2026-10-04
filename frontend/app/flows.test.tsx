@@ -38,11 +38,13 @@ vi.mock("@/lib/api", async (importOriginal) => {
 });
 
 import Login from "./login/LoginForm";
+import RegisterForm from "./register/RegisterForm";
 import ProjectPage from "./(app)/projects/[id]/ProjectClient";
 import TaskPage from "./(app)/tasks/[id]/TaskClient";
 import AppShell from "./components/AppShell";
 import { ToastProvider } from "./components/ToastProvider";
 import Dashboard from "./(app)/dashboard/DashboardClient";
+import { ApiError } from "@/lib/api";
 
 class MockWebSocket {
   static instances: MockWebSocket[] = [];
@@ -189,6 +191,87 @@ describe("frontend user flows", () => {
     });
     expect(localStorage.getItem("access")).toBe("access-token");
     expect(localStorage.getItem("refresh")).toBe("refresh-token");
+  });
+
+  it("shows duplicate registration email errors under email with a login link", async () => {
+    const duplicateMessage =
+      "An account with this email already exists. Log in instead.";
+    mocks.api.mockRejectedValue(
+      new ApiError("INVALID", duplicateMessage, 400, {
+        email: [duplicateMessage],
+      }),
+    );
+    render(<RegisterForm />);
+    fireEvent.change(screen.getByPlaceholderText("Email"), {
+      target: { value: "already@example.com" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("Password"), {
+      target: { value: "StrongPass!234" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+
+    const email = screen.getByPlaceholderText("Email");
+    const password = screen.getByPlaceholderText("Password");
+    const emailError = await screen.findByRole("alert");
+    expect(emailError).toHaveTextContent(duplicateMessage);
+    expect(email).toHaveAttribute("aria-invalid", "true");
+    expect(emailError.id).toBe(email.getAttribute("aria-describedby"));
+    expect(password).not.toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByRole("link", { name: "Log in" })).toHaveAttribute(
+      "href",
+      "/login",
+    );
+  });
+
+  it("shows a weak password error under the registration password input", async () => {
+    mocks.api.mockRejectedValue(
+      new ApiError("INVALID", "This password is too common.", 400, {
+        password: ["This password is too common."],
+      }),
+    );
+    render(<RegisterForm />);
+    fireEvent.change(screen.getByPlaceholderText("Email"), {
+      target: { value: "new@example.com" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("Password"), {
+      target: { value: "StrongPass!234" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+
+    const password = screen.getByPlaceholderText("Password");
+    const passwordError = await screen.findByRole("alert");
+    expect(passwordError).toHaveTextContent("This password is too common.");
+    expect(passwordError.id).toBe(password.getAttribute("aria-describedby"));
+    expect(password).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByPlaceholderText("Email")).not.toHaveAttribute(
+      "aria-invalid",
+      "true",
+    );
+  });
+
+  it("clears a registration email error when the email is edited", async () => {
+    const duplicateMessage =
+      "An account with this email already exists. Log in instead.";
+    mocks.api.mockRejectedValue(
+      new ApiError("INVALID", duplicateMessage, 400, {
+        email: [duplicateMessage],
+      }),
+    );
+    render(<RegisterForm />);
+    const email = screen.getByPlaceholderText("Email");
+    fireEvent.change(email, { target: { value: "already@example.com" } });
+    fireEvent.change(screen.getByPlaceholderText("Password"), {
+      target: { value: "StrongPass!234" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      duplicateMessage,
+    );
+
+    fireEvent.change(email, { target: { value: "different@example.com" } });
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(email).not.toHaveAttribute("aria-invalid", "true");
   });
 
   it("shows password visibility toggle on the login form", () => {
