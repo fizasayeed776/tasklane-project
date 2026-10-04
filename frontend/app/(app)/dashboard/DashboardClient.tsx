@@ -17,6 +17,7 @@ import {
   Project,
   setOrganization,
 } from "@/lib/api";
+import { activityGlyph } from "@/lib/activity";
 import { initials, relativeTime, roleLabel } from "@/lib/format";
 import AccessibleDialog from "../../components/AccessibleDialog";
 import QueryError from "../../components/QueryError";
@@ -48,13 +49,6 @@ async function projectTaskSummary(projectId: number) {
     }
   }
   return { count, latestTaskChange };
-}
-
-function activityGlyph(verb: string) {
-  if (verb.includes("assigned")) return "Γåù";
-  if (verb.includes("status")) return "Γå╗";
-  if (verb.includes("comment")) return "\u201c";
-  return "∩╝ï";
 }
 
 export default function Dashboard() {
@@ -697,8 +691,7 @@ export default function Dashboard() {
           )}
         </section>
       )}
-
-      {/* ΓöÇΓöÇ New project dialog ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */}
+      {/* New project dialog */}
       {projectModalOpen && (
         <AccessibleDialog
           labelledBy="new-project-title"
@@ -748,8 +741,7 @@ export default function Dashboard() {
           </form>
         </AccessibleDialog>
       )}
-
-      {/* ΓöÇΓöÇ Remove member confirmation ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */}
+      {/* Remove member confirmation */}
       {memberPendingRemoval && (
         <AccessibleDialog
           labelledBy="remove-member-title"
@@ -782,8 +774,7 @@ export default function Dashboard() {
           </div>
         </AccessibleDialog>
       )}
-
-      {/* ΓöÇΓöÇ Transfer ownership confirmation ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */}
+      {/* Transfer ownership confirmation */}
       {transferTarget && (
         <AccessibleDialog
           labelledBy="transfer-ownership-title"
@@ -820,8 +811,7 @@ export default function Dashboard() {
           </div>
         </AccessibleDialog>
       )}
-
-      {/* ΓöÇΓöÇ Leave organization confirmation ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */}
+      {/* Leave organization confirmation */}
       {leaveConfirmOpen && (
         <AccessibleDialog
           labelledBy="leave-org-title"
@@ -855,8 +845,7 @@ export default function Dashboard() {
           </div>
         </AccessibleDialog>
       )}
-
-      {/* ΓöÇΓöÇ Delete organization confirmation ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */}
+      {/* Delete organization confirmation */}
       {deleteConfirmOpen && (
         <AccessibleDialog
           labelledBy="delete-org-title"
