@@ -13,6 +13,7 @@ import {
   Status,
   Task,
 } from "@/lib/api";
+import { activityGlyph } from "@/lib/activity";
 import { initials, relativeTime, roleLabel } from "@/lib/format";
 import QueryError from "../../../components/QueryError";
 import { useToast } from "../../../components/ToastProvider";
@@ -47,13 +48,6 @@ function statusLabel(status: string) {
         .toLowerCase()
         .replaceAll("_", " ")
         .replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
-
-function activityGlyph(verb: string) {
-  if (verb.includes("assigned")) return "↗";
-  if (verb.includes("status")) return "↻";
-  if (verb.includes("comment")) return "“";
-  return "＋";
 }
 
 function formattedDate(value?: string | null) {
