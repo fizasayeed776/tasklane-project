@@ -7,6 +7,20 @@ from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 env = os.environ.get
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {
+        "console": {"class": "logging.StreamHandler"},
+    },
+    "loggers": {
+        "config.exceptions": {
+            "handlers": ["console"],
+            "level": "ERROR",
+            "propagate": True,
+        },
+    },
+}
 SECRET_KEY = env("DJANGO_SECRET_KEY", "")
 if not SECRET_KEY or not SECRET_KEY.strip():
     raise ImproperlyConfigured(

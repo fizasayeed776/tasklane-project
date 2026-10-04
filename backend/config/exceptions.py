@@ -1,7 +1,11 @@
+import logging
+
 from django.http import JsonResponse
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import APIException, ValidationError
 from rest_framework.response import Response
 from rest_framework.views import exception_handler
+
+logger = logging.getLogger(__name__)
 
 
 def not_found(request, exception=None):
@@ -47,6 +51,8 @@ def handler(exc, context):
     """One error shape for every failure; never leaks stack traces."""
     resp = exception_handler(exc, context)
     if resp is None:
+        if not isinstance(exc, APIException):
+            logger.exception("Unhandled exception while processing API request")
         return Response(
             {
                 "success": False,
