@@ -38,11 +38,7 @@ class RegisterView(ThrottledMixin, generics.CreateAPIView):
 
 
 class LoginView(ThrottledMixin, TokenObtainPairView):
-    def post(self, request, *args, **kwargs):
-        response = super().post(request, *args, **kwargs)
-        if response.status_code == status.HTTP_200_OK:
-            services.accept_invitations_after_login(request.data.get("email", ""))
-        return response
+    pass
 
 
 class RefreshView(ThrottledMixin, TokenRefreshView):
