@@ -76,6 +76,11 @@ class CommentSerializer(serializers.ModelSerializer):
 
 
 class ActivitySerializer(serializers.ModelSerializer):
+    actor_name = serializers.SerializerMethodField()
+
+    def get_actor_name(self, obj) -> str:
+        return obj.actor.display_name if obj.actor else ""
+
     class Meta:
         model = Activity
-        fields = ["id", "task", "verb", "message", "created_at"]
+        fields = ["id", "task", "verb", "message", "created_at", "actor_name"]

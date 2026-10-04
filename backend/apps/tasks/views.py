@@ -123,7 +123,10 @@ class TaskViewSet(viewsets.ModelViewSet):
     def activity(self, request, pk=None):
         return Response(
             ActivitySerializer(
-                self.get_object().activities.order_by("-created_at"), many=True
+                self.get_object()
+                .activities.select_related("actor")
+                .order_by("-created_at"),
+                many=True,
             ).data
         )
 
