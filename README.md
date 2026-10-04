@@ -43,13 +43,19 @@ The supported local installation path runs the complete stack with Docker Compos
    Copy-Item .env.example .env
    ```
 
-   `DJANGO_SECRET_KEY` is required. Outside debug mode it must be unique, at least 50 characters, and contain no placeholder text. Generate a key with:
+   Before the first `docker compose up --build`, replace the placeholder `DJANGO_SECRET_KEY` in `.env`. With `DJANGO_DEBUG=0`, the placeholder is rejected when the backend starts. The key must be unique, at least 50 characters, and contain no placeholder text. Generate one with Docker, so local Python is not required:
 
    ```powershell
-   python -c "import secrets; print(secrets.token_urlsafe(64))"
+   docker compose run --rm --no-deps backend python -c "import secrets; print(secrets.token_urlsafe(64))"
    ```
 
-   Replace the example value in `.env`, set a strong PostgreSQL password, and do not commit `.env`.
+   Copy the generated value into `.env` as `DJANGO_SECRET_KEY`, set a strong PostgreSQL password, and do not commit `.env`. If startup reports:
+
+   ```text
+   ImproperlyConfigured: DJANGO_SECRET_KEY must not contain a placeholder outside debug mode.
+   ```
+
+   replace the placeholder value in `.env` with a generated key, then run `docker compose up --build -d` again.
 
 2. Build and start all services in the background:
 
