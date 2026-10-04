@@ -31,6 +31,12 @@ export async function fetchAllPages<T>(
     nextPath = `${url.pathname}${url.search}`;
   }
 
+  if (nextPath) {
+    console.warn(
+      `fetchAllPages: stopped after ${MAX_API_PAGES} pages, results are truncated.`,
+    );
+  }
+
   return results;
 }
 

@@ -89,6 +89,7 @@ describe("single-flight token refresh", () => {
 
 describe("fetchAllPages", () => {
   it("returns results from each page in order", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = new URL(String(input));
       const page = url.searchParams.get("page");
@@ -112,18 +113,24 @@ describe("fetchAllPages", () => {
     vi.stubGlobal("fetch", fetchMock);
     localStorage.clear();
 
-    await expect(
-      fetchAllPages<{ id: number }>("/api/tasks/?page=1"),
-    ).resolves.toEqual([{ id: 1 }, { id: 2 }, { id: 3 }]);
-    expect(fetchMock).toHaveBeenCalledTimes(3);
-    expect(fetchMock.mock.calls.map(([input]) => String(input))).toEqual([
-      "http://localhost:8000/api/tasks/?page=1",
-      "http://localhost:8000/api/tasks/?page=2",
-      "http://localhost:8000/api/tasks/?page=3",
-    ]);
+    try {
+      await expect(
+        fetchAllPages<{ id: number }>("/api/tasks/?page=1"),
+      ).resolves.toEqual([{ id: 1 }, { id: 2 }, { id: 3 }]);
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      expect(fetchMock.mock.calls.map(([input]) => String(input))).toEqual([
+        "http://localhost:8000/api/tasks/?page=1",
+        "http://localhost:8000/api/tasks/?page=2",
+        "http://localhost:8000/api/tasks/?page=3",
+      ]);
+      expect(warnSpy).not.toHaveBeenCalled();
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 
   it("stops after the page cap", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = new URL(String(input));
       const page = Number(url.searchParams.get("page") ?? "1");
@@ -141,11 +148,18 @@ describe("fetchAllPages", () => {
     vi.stubGlobal("fetch", fetchMock);
     localStorage.clear();
 
-    const results = await fetchAllPages<{ id: number }>("/api/tasks/?page=1");
+    try {
+      const results = await fetchAllPages<{ id: number }>(
+        "/api/tasks/?page=1",
+      );
 
-    expect(results).toHaveLength(50);
-    expect(results[0]).toEqual({ id: 1 });
-    expect(results[49]).toEqual({ id: 50 });
-    expect(fetchMock).toHaveBeenCalledTimes(50);
+      expect(results).toHaveLength(50);
+      expect(results[0]).toEqual({ id: 1 });
+      expect(results[49]).toEqual({ id: 50 });
+      expect(fetchMock).toHaveBeenCalledTimes(50);
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 });
