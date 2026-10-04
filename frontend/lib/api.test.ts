@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { api, clearSession, fetchAllPages, refreshSession } from "@/lib/api";
+import {
+  ApiError,
+  api,
+  clearSession,
+  fetchAllPages,
+  refreshSession,
+} from "@/lib/api";
 
 // The module uses NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
 const REFRESH_URL = "http://localhost:8000/api/auth/refresh/";
@@ -84,6 +90,152 @@ describe("single-flight token refresh", () => {
     expect(refreshed).toBe(false);
     expect(localStorage.getItem("access")).toBeNull();
     expect(localStorage.getItem("refresh")).toBeNull();
+  });
+});
+
+describe("auth-endpoint 401 handling", () => {
+  it("throws ApiError for a 401 from /api/auth/login/ without touching the session or redirecting", async () => {
+    // Seed some unrelated localStorage data that must survive the 401.
+    localStorage.setItem("org", "42");
+
+    // Capture any writes to window.location.href.
+    const hrefSpy = vi.fn();
+    vi.stubGlobal("location", {
+      ...window.location,
+      pathname: "/login",
+      get href() {
+        return window.location.href;
+      },
+      set href(v: string) {
+        hrefSpy(v);
+      },
+    });
+
+    const fetchCallUrls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      async (input: RequestInfo | URL, _init?: RequestInit) => {
+        fetchCallUrls.push(typeof input === "string" ? input : String(input));
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: {
+              code: "AUTH_FAILED",
+              message: "No active account found with the given credentials.",
+            },
+          }),
+          { status: 401, headers: { "Content-Type": "application/json" } },
+        );
+      },
+    );
+
+    localStorage.setItem("access", "stale-token");
+    localStorage.setItem("refresh", "stale-refresh");
+
+    let thrown: unknown;
+    try {
+      await api("/api/auth/login/", {
+        method: "POST",
+        json: { email: "x@example.com", password: "wrong" },
+      });
+    } catch (e) {
+      thrown = e;
+    }
+
+    // Must throw an ApiError with the server's status and message.
+    expect(thrown).toBeInstanceOf(ApiError);
+    const err = thrown as ApiError;
+    expect(err.status).toBe(401);
+    expect(err.message).toBe(
+      "No active account found with the given credentials.",
+    );
+
+    // Must NOT call the refresh endpoint.
+    expect(fetchCallUrls.every((u) => u !== REFRESH_URL)).toBe(true);
+    // Only the login call itself should have been made.
+    expect(fetchCallUrls).toHaveLength(1);
+
+    // Must NOT wipe the session.
+    expect(localStorage.getItem("access")).toBe("stale-token");
+    expect(localStorage.getItem("refresh")).toBe("stale-refresh");
+    // Must NOT wipe unrelated keys.
+    expect(localStorage.getItem("org")).toBe("42");
+
+    // Must NOT redirect.
+    expect(hrefSpy).not.toHaveBeenCalled();
+  });
+
+  it("does not send Authorization header for auth-path requests even when a stale token is in storage", async () => {
+    localStorage.setItem("access", "stale-token");
+
+    let capturedHeaders: Record<string, string> | undefined;
+    vi.stubGlobal(
+      "fetch",
+      async (_input: RequestInfo | URL, init?: RequestInit) => {
+        capturedHeaders = init?.headers as Record<string, string> | undefined;
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: { code: "X", message: "X" },
+          }),
+          { status: 401, headers: { "Content-Type": "application/json" } },
+        );
+      },
+    );
+
+    try {
+      await api("/api/auth/login/", {
+        method: "POST",
+        json: { email: "x@example.com", password: "wrong" },
+      });
+    } catch {
+      // expected
+    }
+
+    expect(capturedHeaders?.["Authorization"]).toBeUndefined();
+    expect(capturedHeaders?.["X-Organization-ID"]).toBeUndefined();
+  });
+
+  it("clears the session and redirects for a protected-path 401 when refresh also fails", async () => {
+    localStorage.setItem("access", "old");
+    localStorage.setItem("refresh", "bad");
+
+    // Track href assignments.
+    const hrefSpy = vi.fn();
+    vi.stubGlobal("location", {
+      ...window.location,
+      pathname: "/dashboard",
+      get href() {
+        return window.location.href;
+      },
+      set href(v: string) {
+        hrefSpy(v);
+      },
+    });
+
+    vi.stubGlobal(
+      "fetch",
+      async (input: RequestInfo | URL, _init?: RequestInit) => {
+        // All requests return 401 (including the refresh attempt).
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: { code: "E", message: "E" },
+          }),
+          { status: 401, headers: { "Content-Type": "application/json" } },
+        );
+      },
+    );
+
+    try {
+      await api("/api/protected/");
+    } catch {
+      // expected ApiError
+    }
+
+    expect(localStorage.getItem("access")).toBeNull();
+    expect(localStorage.getItem("refresh")).toBeNull();
+    expect(hrefSpy).toHaveBeenCalledWith("/login");
   });
 });
 

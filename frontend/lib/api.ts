@@ -1,5 +1,24 @@
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
+// These endpoints handle authentication themselves.  A 401 from them is a
+// legitimate credential failure, not an expired session, so we must not try
+// to refresh the token, clear the session, or redirect to /login.
+const AUTH_PATHS = new Set([
+  "/api/auth/login/",
+  "/api/auth/register/",
+  "/api/auth/refresh/",
+  "/api/auth/password/forgot/",
+  "/api/auth/password/reset/",
+]);
+
+// Paths where a session-expired redirect would cause a reload loop.
+const AUTH_PAGE_PATHS = new Set([
+  "/login",
+  "/register",
+  "/forgot-password",
+  "/reset-password",
+]);
+
 type ApiPage<T> = {
   count?: number;
   next: string | null;
@@ -129,18 +148,53 @@ export async function api<T = any>(
   init: RequestInit & { json?: unknown } = {},
   retry = true,
 ): Promise<T> {
+  const isAuthPath = AUTH_PATHS.has(path);
+
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
   };
-  const token = localStorage.getItem("access"),
-    org = localStorage.getItem("org");
-  if (token) headers.Authorization = `Bearer ${token}`;
-  if (org) headers["X-Organization-ID"] = org;
+
+  // Auth endpoints must not receive stale credentials — they authenticate
+  // using the request body alone.
+  if (!isAuthPath) {
+    const token = localStorage.getItem("access");
+    const org = localStorage.getItem("org");
+    if (token) headers.Authorization = `Bearer ${token}`;
+    if (org) headers["X-Organization-ID"] = org;
+  }
+
+  const token = isAuthPath ? undefined : localStorage.getItem("access");
+
   const res = await fetch(`${API}${path}`, {
     ...init,
     headers,
     body: init.json ? JSON.stringify(init.json) : init.body,
   });
+
+  // ── Auth endpoints: 401 means bad credentials, not an expired session ──
+  if (res.status === 401 && isAuthPath) {
+    const data: unknown = await res.json().catch(() => ({}));
+    const error =
+      data && typeof data === "object" && "error" in data
+        ? (
+            data as {
+              error?: {
+                code?: string;
+                message?: string;
+                fields?: Record<string, string[]>;
+              };
+            }
+          ).error
+        : undefined;
+    throw new ApiError(
+      error?.code ?? "ERROR",
+      error?.message ?? "Request failed",
+      res.status,
+      error?.fields,
+    );
+  }
+
+  // ── Protected endpoints: try the shared refresh once ──
   if (res.status === 401 && retry) {
     const current = localStorage.getItem("access");
     if (current !== null && current !== token) {
@@ -149,10 +203,34 @@ export async function api<T = any>(
     }
     if (await refresh()) return api<T>(path, init, false);
   }
+
   if (res.status === 401) {
     clearSession();
-    window.location.href = "/login";
+    // Avoid a reload loop: if we're already on an auth page just throw.
+    if (!AUTH_PAGE_PATHS.has(window.location.pathname)) {
+      window.location.href = "/login";
+    }
+    const data: unknown = await res.json().catch(() => ({}));
+    const error =
+      data && typeof data === "object" && "error" in data
+        ? (
+            data as {
+              error?: {
+                code?: string;
+                message?: string;
+                fields?: Record<string, string[]>;
+              };
+            }
+          ).error
+        : undefined;
+    throw new ApiError(
+      error?.code ?? "ERROR",
+      error?.message ?? "Request failed",
+      res.status,
+      error?.fields,
+    );
   }
+
   if (res.status === 204) return undefined as T;
   const data: unknown = await res.json().catch(() => ({}));
   if (!res.ok) {
