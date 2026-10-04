@@ -13,7 +13,6 @@ import {
   Status,
   Task,
 } from "@/lib/api";
-import { activityGlyph } from "@/lib/activity";
 import { initials, relativeTime, roleLabel } from "@/lib/format";
 import QueryError from "../../../components/QueryError";
 import { useToast } from "../../../components/ToastProvider";
@@ -32,6 +31,7 @@ type TaskActivity = {
   verb: string;
   message: string;
   created_at: string;
+  actor_name: string;
 };
 
 type TaskUpdate = Partial<
@@ -471,7 +471,7 @@ export default function TaskClient({ id }: { id: string }) {
                     aria-hidden="true"
                     className="grid size-8 shrink-0 place-items-center rounded-full bg-accent-soft text-accent"
                   >
-                    {activityGlyph(item.verb)}
+                    {initials(item.actor_name || "")}
                   </span>
                   <div>
                     <p>{item.message}</p>

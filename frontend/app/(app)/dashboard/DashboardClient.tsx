@@ -17,7 +17,6 @@ import {
   Project,
   setOrganization,
 } from "@/lib/api";
-import { activityGlyph } from "@/lib/activity";
 import { initials, relativeTime, roleLabel } from "@/lib/format";
 import AccessibleDialog from "../../components/AccessibleDialog";
 import QueryError from "../../components/QueryError";
@@ -452,7 +451,7 @@ export default function Dashboard() {
                   aria-hidden="true"
                   className="grid size-8 shrink-0 place-items-center rounded-full bg-accent-soft text-accent"
                 >
-                  {activityGlyph(item.verb)}
+                  {initials(item.actor_name || "")}
                 </span>
                 <div className="min-w-0">
                   <p className="leading-5">{item.message}</p>
