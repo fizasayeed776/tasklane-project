@@ -1088,6 +1088,15 @@ describe("frontend user flows", () => {
             verb: "comment_added",
             message: "Avery commented on a task.",
             created_at: "2026-10-02T10:00:00Z",
+            actor_name: "Fiza Saeed",
+          },
+          {
+            id: 5,
+            task: null,
+            verb: "task_created",
+            message: "Someone created a task.",
+            created_at: "2026-10-02T10:00:00Z",
+            actor_name: "",
           },
         ];
       }
@@ -1103,6 +1112,8 @@ describe("frontend user flows", () => {
       "/tasks/42",
     );
     expect(screen.getByText("Overdue")).toBeInTheDocument();
+    expect(await screen.findByText("FS")).toBeInTheDocument();
+    expect(screen.getByText("?")).toBeInTheDocument();
   });
 
   it("requires confirmation before removing an organization member", async () => {
@@ -1190,6 +1201,11 @@ describe("frontend user flows", () => {
     expect(
       await screen.findByRole("heading", { name: "Comments" }),
     ).toBeInTheDocument();
+    const activitySummary = screen
+      .getByText("Activity history")
+      .closest("summary");
+    expect(activitySummary?.querySelector("svg")).not.toBeNull();
+    expect(activitySummary?.textContent).not.toContain("\u2304");
     expect(
       screen.queryByRole("button", { name: "Edit task" }),
     ).not.toBeInTheDocument();

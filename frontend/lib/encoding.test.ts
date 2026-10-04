@@ -4,8 +4,6 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import { activityGlyph } from "@/lib/activity";
-
 const frontendRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
@@ -18,16 +16,6 @@ function sourceFiles(directory: string): string[] {
     return entry.isFile() && /\.tsx?$/.test(entry.name) ? [entryPath] : [];
   });
 }
-
-describe("activityGlyph", () => {
-  it("returns the expected glyph for each activity type", () => {
-    expect(activityGlyph("task_assigned")).toBe("\u2197");
-    expect(activityGlyph("status_changed")).toBe("\u21bb");
-    expect(activityGlyph("comment_added")).toBe("\u201c");
-    expect(activityGlyph("task_created")).toBe("+");
-    expect(activityGlyph("other_event")).toBe("+");
-  });
-});
 
 describe("source encoding", () => {
   it("contains no common mojibake sequences in app or lib TypeScript", () => {
