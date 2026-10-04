@@ -33,7 +33,7 @@ export function setOrganization(id: string) {
   window.dispatchEvent(new Event("tasklane:organization"));
 }
 
-async function refresh(): Promise<boolean> {
+async function doRefresh(): Promise<boolean> {
   const r = localStorage.getItem("refresh");
   if (!r) return false;
   const res = await fetch(`${API}/api/auth/refresh/`, {
@@ -45,6 +45,19 @@ async function refresh(): Promise<boolean> {
   const d = await res.json();
   setSession(d.access, d.refresh ?? r);
   return true;
+}
+
+// Single in-flight refresh: concurrent callers share the same Promise so the
+// backend rotation endpoint is called exactly once per expiry cycle.
+let refreshing: Promise<boolean> | null = null;
+
+function refresh(): Promise<boolean> {
+  if (refreshing === null) {
+    refreshing = doRefresh().finally(() => {
+      refreshing = null;
+    });
+  }
+  return refreshing;
 }
 
 export async function refreshSession(): Promise<boolean> {
@@ -70,8 +83,14 @@ export async function api<T = any>(
     headers,
     body: init.json ? JSON.stringify(init.json) : init.body,
   });
-  if (res.status === 401 && retry && (await refresh()))
-    return api<T>(path, init, false);
+  if (res.status === 401 && retry) {
+    const current = localStorage.getItem("access");
+    if (current !== null && current !== token) {
+      // Another concurrent request already refreshed; retry with the new token.
+      return api<T>(path, init, false);
+    }
+    if (await refresh()) return api<T>(path, init, false);
+  }
   if (res.status === 401) {
     clearSession();
     window.location.href = "/login";
