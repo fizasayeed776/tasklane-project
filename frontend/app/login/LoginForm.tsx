@@ -2,12 +2,17 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import {
+  ApiError,
   api,
   apiFieldErrors,
   apiFormErrorMessage,
   setSession,
 } from "@/lib/api";
 import PasswordField from "../components/PasswordField";
+
+const THROTTLE_MESSAGE =
+  "Too many attempts. Please wait a minute and try again.";
+
 export default function LoginForm() {
   const router = useRouter();
   const [email, setEmail] = useState(""),
@@ -28,17 +33,21 @@ export default function LoginForm() {
       setSession(d.access, d.refresh);
       router.push("/dashboard");
     } catch (x: unknown) {
-      const errors = apiFieldErrors(x);
-      setFieldErrors({
-        email: errors.email?.[0] ?? "",
-        password: errors.password?.[0] ?? "",
-      });
-      const message = apiFormErrorMessage(x, ["email", "password"]);
-      setErr(
-        message.includes("credentials")
-          ? "Email or password is wrong."
-          : message,
-      );
+      if (x instanceof ApiError && x.status === 429) {
+        setErr(THROTTLE_MESSAGE);
+      } else {
+        const errors = apiFieldErrors(x);
+        setFieldErrors({
+          email: errors.email?.[0] ?? "",
+          password: errors.password?.[0] ?? "",
+        });
+        const message = apiFormErrorMessage(x, ["email", "password"]);
+        setErr(
+          message.includes("credentials") || message.includes("No active")
+            ? "Email or password is wrong."
+            : message,
+        );
+      }
     } finally {
       setSubmitting(false);
     }

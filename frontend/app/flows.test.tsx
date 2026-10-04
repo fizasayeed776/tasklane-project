@@ -1427,4 +1427,101 @@ describe("frontend user flows", () => {
       screen.getByRole("button", { name: "Notifications" }),
     ).toBeInTheDocument();
   });
+
+  // ── Part B: login and registration error messages ─────────────────────────
+
+  it("shows 'Email or password is wrong.' on a failed login and stays on the page", async () => {
+    mocks.api.mockRejectedValue(
+      new ApiError(
+        "AUTH_FAILED",
+        "No active account found with the given credentials.",
+        401,
+      ),
+    );
+    render(<Login />);
+
+    fireEvent.change(screen.getByPlaceholderText("Email"), {
+      target: { value: "x@example.com" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("Password"), {
+      target: { value: "wrong" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Log in" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Email or password is wrong.",
+    );
+    // No navigation.
+    expect(mocks.push).not.toHaveBeenCalled();
+  });
+
+  it("shows the throttle message on a 429 from the login endpoint", async () => {
+    mocks.api.mockRejectedValue(
+      new ApiError("THROTTLED", "Request was throttled.", 429),
+    );
+    render(<Login />);
+
+    fireEvent.change(screen.getByPlaceholderText("Email"), {
+      target: { value: "x@example.com" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("Password"), {
+      target: { value: "StrongPass!234" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Log in" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Too many attempts. Please wait a minute and try again.",
+    );
+    expect(mocks.push).not.toHaveBeenCalled();
+  });
+
+  it("shows an invite error above the submit button with the owner hint", async () => {
+    mocks.api.mockRejectedValue(
+      new ApiError("VALIDATION_ERROR", "Validation failed.", 400, {
+        invite: ["This invitation has already been used."],
+      }),
+    );
+    render(<RegisterForm />);
+
+    fireEvent.change(screen.getByPlaceholderText("Email"), {
+      target: { value: "new@example.com" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("Password"), {
+      target: { value: "StrongPass!234" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("This invitation has already been used.");
+    expect(alert).toHaveTextContent(
+      "Ask the organization owner to send you a new invitation.",
+    );
+    // Must be before the submit button in the DOM.
+    const button = screen.getByRole("button", { name: "Create account" });
+    expect(
+      alert.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("redirects to /login when registration succeeds but automatic login fails", async () => {
+    mocks.api
+      .mockResolvedValueOnce(undefined) // register succeeds
+      .mockRejectedValueOnce(
+        new ApiError("THROTTLED", "Request was throttled.", 429),
+      ); // login throttled
+
+    render(<RegisterForm />);
+
+    fireEvent.change(screen.getByPlaceholderText("Email"), {
+      target: { value: "brand-new@example.com" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("Password"), {
+      target: { value: "StrongPass!234" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+
+    await waitFor(() =>
+      expect(mocks.push).toHaveBeenCalledWith("/login?registered=1"),
+    );
+  });
 });
