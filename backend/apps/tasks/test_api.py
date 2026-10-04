@@ -172,12 +172,21 @@ def test_comment_owner_can_edit_and_admin_can_moderate(world):
     comment_id = response.json()["id"]
     assert Comment.objects.get(pk=comment_id).user_id == author.id
 
-    assert (
-        author_client.patch(
-            f"/api/comments/{comment_id}/", {"content": "Edited"}
-        ).status_code
-        == 200
+    response = author_client.patch(f"/api/comments/{comment_id}/", {})
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "INVALID"
+
+    response = author_client.patch(
+        f"/api/comments/{comment_id}/", {"content": "  "}
     )
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "INVALID"
+
+    response = author_client.patch(
+        f"/api/comments/{comment_id}/", {"content": "Edited"}
+    )
+    assert response.status_code == 200
+    assert response.json()["content"] == "Edited"
     assert (
         as_user(world["a"])
         .patch(f"/api/comments/{comment_id}/", {"content": "Not yours"})
