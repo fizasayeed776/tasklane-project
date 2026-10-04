@@ -11,6 +11,7 @@ import {
   api,
   canManage,
   errorMessage,
+  fetchAllPages,
   Org,
   OrgMember,
   Project,
@@ -27,37 +28,23 @@ type CurrentUser = {
   display_name?: string;
 };
 
-type ProjectTaskPage = {
-  count: number;
-  next: string | null;
-  results: { updated_at: string; created_at: string }[];
-};
-
 async function projectTaskSummary(projectId: number) {
-  let nextPath: string | null = `/api/tasks/?project=${projectId}`;
   let count = 0;
+  const tasks = await fetchAllPages<{
+    updated_at: string;
+    created_at: string;
+  }>(`/api/tasks/?project=${projectId}`, (page) => {
+    count = page.count ?? count;
+  });
   let latestTaskChange: string | undefined;
-  while (nextPath) {
-    const response: ProjectTaskPage = await api<ProjectTaskPage>(nextPath);
-    count = response.count;
-    for (const task of response.results) {
-      const changed = task.updated_at || task.created_at;
-      if (
-        changed &&
-        (!latestTaskChange ||
-          new Date(changed).getTime() > new Date(latestTaskChange).getTime())
-      ) {
-        latestTaskChange = changed;
-      }
-    }
-    if (response.next) {
-      const url = new URL(
-        response.next,
-        process.env.NEXT_PUBLIC_API_URL ?? window.location.origin,
-      );
-      nextPath = `${url.pathname}${url.search}`;
-    } else {
-      nextPath = null;
+  for (const task of tasks) {
+    const changed = task.updated_at || task.created_at;
+    if (
+      changed &&
+      (!latestTaskChange ||
+        new Date(changed).getTime() > new Date(latestTaskChange).getTime())
+    ) {
+      latestTaskChange = changed;
     }
   }
   return { count, latestTaskChange };

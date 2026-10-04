@@ -17,7 +17,24 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api")>();
-  return { ...actual, api: mocks.api };
+  return {
+    ...actual,
+    api: mocks.api,
+    fetchAllPages: async (
+      path: string,
+      onPage?: (page: { count?: number }) => void,
+    ) => {
+      const results = [];
+      let next: string | null | undefined = path;
+      while (next) {
+        const page = await mocks.api(next);
+        onPage?.(page);
+        results.push(...page.results);
+        next = page.next;
+      }
+      return results;
+    },
+  };
 });
 
 import Login from "./login/LoginForm";
@@ -448,6 +465,49 @@ describe("frontend user flows", () => {
     expect(window.location.search).toBe(
       "?status=IN_PROGRESS&priority=HIGH&assigned_to=5",
     );
+  });
+
+  it("renders project tasks returned on page two", async () => {
+    const pageTwoTask = {
+      id: 22,
+      project: 1,
+      organization: 2,
+      title: "Task from page two",
+      description: "",
+      status: "TODO",
+      priority: "MEDIUM",
+      assigned_to: null,
+      assigned_to_name: null,
+      created_by: 5,
+      created_by_name: "Avery",
+      due_date: null,
+    };
+    mocks.api.mockImplementation(async (endpoint: string) => {
+      if (endpoint === "/api/projects/1/") {
+        return {
+          id: 1,
+          organization: 2,
+          name: "Roadmap",
+          description: "",
+          status: "ACTIVE",
+          created_by: 1,
+        };
+      }
+      if (endpoint === "/api/organizations/") {
+        return [{ id: 2, name: "Acme", role: "MEMBER" }];
+      }
+      if (endpoint === "/api/organizations/2/members/") return [];
+      if (endpoint === "/api/tasks/?project=1") {
+        return { next: "/api/tasks/?project=1&page=2", results: [] };
+      }
+      if (endpoint === "/api/tasks/?project=1&page=2") {
+        return { next: null, results: [pageTwoTask] };
+      }
+      throw new Error(`Unexpected API call: ${endpoint}`);
+    });
+    renderProjectPage();
+
+    expect(await screen.findByText("Task from page two")).toBeInTheDocument();
   });
 
   it("applies combined filters from the URL when loading the board", async () => {
