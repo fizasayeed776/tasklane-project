@@ -149,9 +149,7 @@ describe("fetchAllPages", () => {
     localStorage.clear();
 
     try {
-      const results = await fetchAllPages<{ id: number }>(
-        "/api/tasks/?page=1",
-      );
+      const results = await fetchAllPages<{ id: number }>("/api/tasks/?page=1");
 
       expect(results).toHaveLength(50);
       expect(results[0]).toEqual({ id: 1 });

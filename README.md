@@ -63,7 +63,9 @@ The supported local installation path runs the complete stack with Docker Compos
    docker compose up --build -d
    ```
 
-   Compose waits for PostgreSQL and Redis healthchecks before starting the API, Celery worker, or Beat. PostgreSQL health is checked with the configured `POSTGRES_USER` and `POSTGRES_DB`; Redis health is checked with `redis-cli ping`. The backend applies committed database migrations and collects static assets before starting the ASGI server. Swagger UI assets are served locally through WhiteNoise and drf-spectacular-sidecar rather than loaded from a CDN.
+   Compose builds the frontend as a Next.js production image (`next build` during image creation and `next start` at runtime). It waits for PostgreSQL and Redis healthchecks before starting the API, Celery worker, or Beat. PostgreSQL health is checked with the configured `POSTGRES_USER` and `POSTGRES_DB`; Redis health is checked with `redis-cli ping`. The backend applies committed database migrations and collects static assets before starting the ASGI server. Swagger UI assets are served locally through WhiteNoise and drf-spectacular-sidecar rather than loaded from a CDN.
+
+   `NEXT_PUBLIC_API_URL` is embedded in the frontend image at build time and configures both browser REST requests and the notifications WebSocket URL. Rebuild with `docker compose up --build` after changing any `NEXT_PUBLIC_*` value. The image keeps its development tools installed, so `docker compose exec frontend npm test`, `docker compose exec frontend npm run lint`, and `docker compose exec frontend npm run format:check` remain available while the production server runs.
 
    Check startup status with:
 
