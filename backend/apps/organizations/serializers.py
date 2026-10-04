@@ -48,6 +48,9 @@ class InviteSerializer(serializers.Serializer):
         default="MEMBER",
     )
 
+    def validate_email(self, value):
+        return value.strip().lower()
+
 
 class MemberRoleSerializer(serializers.Serializer):
     role = serializers.ChoiceField(

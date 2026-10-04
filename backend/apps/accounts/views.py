@@ -16,6 +16,7 @@ from .serializers import (
     ChangePasswordSerializer,
     ForgotSerializer,
     LogoutSerializer,
+    LoginSerializer,
     PasswordChangeResponseSerializer,
     RegisterSerializer,
     ResetSerializer,
@@ -38,7 +39,7 @@ class RegisterView(ThrottledMixin, generics.CreateAPIView):
 
 
 class LoginView(ThrottledMixin, TokenObtainPairView):
-    pass
+    serializer_class = LoginSerializer
 
 
 class RefreshView(ThrottledMixin, TokenRefreshView):

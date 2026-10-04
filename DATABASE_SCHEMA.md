@@ -117,7 +117,7 @@ The models also receive normal primary-key indexes and Django's implicit indexes
 
 | Model | Index / constraint | Columns / predicate | Why it exists |
 | --- | --- | --- | --- |
-| `User` | Unique email constraint | `email` | Email is the login identifier; enforces case-normalized unique account identity and supports login lookup. |
+| `User` | `user_email_ci_unique` unique constraint | `(LOWER(email))` | Email is the login identifier; registration normalizes email casing and the database prevents case-insensitive duplicates. |
 | `Organization` | Unique slug constraint | `slug` | Prevents duplicate organization slugs and supports direct slug lookup. |
 | `OrganizationMember` | `uniq_member_per_org` unique constraint | `(organization_id, user_id)` | Prevents duplicate membership/role rows and efficiently answers whether a user belongs to an organization. The leading organization column also supports listing its members. |
 | `OrganizationMember` | `member_user_idx` | `(user_id)` | Supports the frequent reverse lookup of all organizations for a user and the membership-scoped tenant filters. |
