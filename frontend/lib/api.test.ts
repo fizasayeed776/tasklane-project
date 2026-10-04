@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { api, clearSession, refreshSession } from "@/lib/api";
+import { api, clearSession, fetchAllPages, refreshSession } from "@/lib/api";
 
 // The module uses NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
 const REFRESH_URL = "http://localhost:8000/api/auth/refresh/";
@@ -84,5 +84,68 @@ describe("single-flight token refresh", () => {
     expect(refreshed).toBe(false);
     expect(localStorage.getItem("access")).toBeNull();
     expect(localStorage.getItem("refresh")).toBeNull();
+  });
+});
+
+describe("fetchAllPages", () => {
+  it("returns results from each page in order", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      const page = url.searchParams.get("page");
+      const body =
+        page === "2"
+          ? {
+              next: "http://localhost:8000/api/tasks/?page=3",
+              results: [{ id: 2 }],
+            }
+          : page === "3"
+            ? { next: null, results: [{ id: 3 }] }
+            : {
+                next: "http://localhost:8000/api/tasks/?page=2",
+                results: [{ id: 1 }],
+              };
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    localStorage.clear();
+
+    await expect(
+      fetchAllPages<{ id: number }>("/api/tasks/?page=1"),
+    ).resolves.toEqual([{ id: 1 }, { id: 2 }, { id: 3 }]);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock.mock.calls.map(([input]) => String(input))).toEqual([
+      "http://localhost:8000/api/tasks/?page=1",
+      "http://localhost:8000/api/tasks/?page=2",
+      "http://localhost:8000/api/tasks/?page=3",
+    ]);
+  });
+
+  it("stops after the page cap", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      const page = Number(url.searchParams.get("page") ?? "1");
+      return new Response(
+        JSON.stringify({
+          next: `http://localhost:8000/api/tasks/?page=${page + 1}`,
+          results: [{ id: page }],
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    localStorage.clear();
+
+    const results = await fetchAllPages<{ id: number }>("/api/tasks/?page=1");
+
+    expect(results).toHaveLength(50);
+    expect(results[0]).toEqual({ id: 1 });
+    expect(results[49]).toEqual({ id: 50 });
+    expect(fetchMock).toHaveBeenCalledTimes(50);
   });
 });

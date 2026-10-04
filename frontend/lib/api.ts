@@ -1,5 +1,39 @@
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
+type ApiPage<T> = {
+  count?: number;
+  next: string | null;
+  results: T[];
+};
+
+const MAX_API_PAGES = 50;
+
+export async function fetchAllPages<T>(
+  path: string,
+  onPage?: (page: Pick<ApiPage<T>, "count">) => void,
+): Promise<T[]> {
+  const results: T[] = [];
+  let nextPath: string | null = path;
+  let pagesFetched = 0;
+
+  while (nextPath && pagesFetched < MAX_API_PAGES) {
+    const page: ApiPage<T> = await api<ApiPage<T>>(nextPath);
+    onPage?.(page);
+    results.push(...page.results);
+    pagesFetched += 1;
+
+    if (!page.next) {
+      nextPath = null;
+      continue;
+    }
+
+    const url = new URL(page.next, API);
+    nextPath = `${url.pathname}${url.search}`;
+  }
+
+  return results;
+}
+
 export class ApiError extends Error {
   constructor(
     public code: string,
