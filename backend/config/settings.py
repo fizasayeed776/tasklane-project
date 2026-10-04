@@ -29,6 +29,8 @@ if not SECRET_KEY or not SECRET_KEY.strip():
 if len(SECRET_KEY) < 32:
     raise ImproperlyConfigured("DJANGO_SECRET_KEY must be at least 32 characters long.")
 DEBUG = env("DJANGO_DEBUG", "0") == "1"
+TIME_ZONE = "Asia/Karachi"
+USE_TZ = True
 ALLOWED_HOSTS = env("ALLOWED_HOSTS", "*").split(",")
 INSTALLED_APPS = [
     "daphne",
@@ -153,6 +155,7 @@ SPECTACULAR_SETTINGS = {
     ],
 }
 CELERY_BROKER_URL = env("REDIS_URL", "redis://localhost:6379/0")
+CELERY_TIMEZONE = TIME_ZONE
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 CHANNEL_LAYERS = {
     "default": {

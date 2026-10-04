@@ -368,6 +368,46 @@ def test_overdue_job_is_scheduled_hourly(settings):
     schedule = settings.CELERY_BEAT_SCHEDULE["overdue-check"]
     assert schedule["task"] == "apps.tasks.jobs.flag_overdue_tasks"
     assert schedule["schedule"] == 3600.0
+    assert settings.TIME_ZONE == "Asia/Karachi"
+    assert settings.CELERY_TIMEZONE == settings.TIME_ZONE
+    assert settings.USE_TZ is True
+
+
+@pytest.mark.django_db(transaction=True)
+def test_overdue_job_excludes_tasks_due_today_and_flags_yesterday(monkeypatch):
+    from apps.tasks.jobs import flag_overdue_tasks
+
+    today = date(2026, 10, 4)
+    monkeypatch.setattr("apps.tasks.jobs.timezone.localdate", lambda: today)
+
+    owner = User.objects.create_user("date-owner@example.com", "Passw0rd!x")
+    organization = create_organization(owner, "Local date overdue")
+    project = Project.objects.create(
+        organization=organization,
+        name="Local date project",
+        created_by=owner,
+    )
+    yesterday_task = Task.objects.create(
+        project=project,
+        title="Due yesterday",
+        created_by=owner,
+        due_date=today - timedelta(days=1),
+    )
+    today_task = Task.objects.create(
+        project=project,
+        title="Due today",
+        created_by=owner,
+        due_date=today,
+    )
+
+    assert flag_overdue_tasks.run() == 1
+
+    yesterday_task.refresh_from_db()
+    today_task.refresh_from_db()
+    assert yesterday_task.overdue_notified_at is not None
+    assert today_task.overdue_notified_at is None
+    assert Activity.objects.filter(task=yesterday_task, verb="task_overdue").exists()
+    assert not Activity.objects.filter(task=today_task, verb="task_overdue").exists()
 
 
 def test_task_comment_and_activity_reads_and_dashboard_statistics(world):
