@@ -84,6 +84,10 @@ Stop services with `docker compose down`. Database data is stored in the named `
 
 `.env.example` documents the supported variables: PostgreSQL database/user/password/host, required `DJANGO_SECRET_KEY` (at least 50 characters without placeholder text outside debug mode), `DJANGO_DEBUG`, allowed hosts, Redis URL, JWT access/refresh lifetimes, email backend/from address, frontend URL, CORS origins, and the public frontend API URL. Local email defaults to Django's console backend. Use a real mail backend and tightly scoped host/CORS settings outside local development.
 
+### Backend dependencies
+
+The backend uses Django 5.2, a long-term support (LTS) release. `backend/requirements.txt` contains runtime dependencies only. `backend/requirements-dev.txt` includes those runtime dependencies plus pytest, coverage, lint, and formatting tools. Docker Compose builds the backend, Celery worker, and Celery Beat with `INSTALL_DEV=true` by default so development and verification tools are available in each service container. Set the Docker build argument `INSTALL_DEV=false` when building a runtime-only image; the Dockerfile then installs only `requirements.txt`.
+
 ## Backend structure and API
 
 Each domain app follows the same separation:
