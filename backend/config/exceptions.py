@@ -72,5 +72,7 @@ def handler(exc, context):
     }
     if is_validation_error or not detail:
         error["details"] = data
+    if is_validation_error and isinstance(data, dict) and not detail:
+        error["fields"] = data
     resp.data = {"success": False, "error": error}
     return resp

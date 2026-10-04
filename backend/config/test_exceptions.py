@@ -38,6 +38,7 @@ def test_validation_errors_include_first_readable_message_and_full_details(
             "code": "INVALID",
             "message": expected_message,
             "details": payload,
+            **({"fields": payload} if isinstance(payload, dict) else {}),
         },
     }
 

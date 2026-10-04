@@ -8,6 +8,7 @@ class ApiErrorDetailSerializer(serializers.Serializer):
     code = serializers.CharField()
     message = serializers.CharField()
     details = serializers.JSONField(required=False)
+    fields = serializers.JSONField(required=False)
 
 
 class ApiErrorSerializer(serializers.Serializer):
