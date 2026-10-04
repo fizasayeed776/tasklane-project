@@ -176,9 +176,7 @@ def test_comment_owner_can_edit_and_admin_can_moderate(world):
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "INVALID"
 
-    response = author_client.patch(
-        f"/api/comments/{comment_id}/", {"content": "  "}
-    )
+    response = author_client.patch(f"/api/comments/{comment_id}/", {"content": "  "})
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "INVALID"
 

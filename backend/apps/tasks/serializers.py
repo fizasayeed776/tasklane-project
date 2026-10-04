@@ -53,9 +53,7 @@ class CommentSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         if self.partial and "content" not in attrs:
-            raise serializers.ValidationError(
-                {"content": "This field is required."}
-            )
+            raise serializers.ValidationError({"content": "This field is required."})
         return attrs
 
     def validate_content(self, value):

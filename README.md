@@ -43,7 +43,13 @@ The supported local installation path runs the complete stack with Docker Compos
    Copy-Item .env.example .env
    ```
 
-   `DJANGO_SECRET_KEY` is required and must contain at least 32 characters. Replace the example with a unique random value (50+ characters recommended), and set a strong PostgreSQL password. Do not commit `.env`.
+   `DJANGO_SECRET_KEY` is required. Outside debug mode it must be unique, at least 50 characters, and contain no placeholder text. Generate a key with:
+
+   ```powershell
+   python -c "import secrets; print(secrets.token_urlsafe(64))"
+   ```
+
+   Replace the example value in `.env`, set a strong PostgreSQL password, and do not commit `.env`.
 
 2. Build and start all services in the background:
 
@@ -70,7 +76,7 @@ Stop services with `docker compose down`. Database data is stored in the named `
 
 ### Environment configuration
 
-`.env.example` documents the supported variables: PostgreSQL database/user/password/host, required `DJANGO_SECRET_KEY` (at least 32 characters), `DJANGO_DEBUG`, allowed hosts, Redis URL, JWT access/refresh lifetimes, email backend/from address, frontend URL, CORS origins, and the public frontend API URL. Local email defaults to Django's console backend. Use a real mail backend and tightly scoped host/CORS settings outside local development.
+`.env.example` documents the supported variables: PostgreSQL database/user/password/host, required `DJANGO_SECRET_KEY` (at least 50 characters without placeholder text outside debug mode), `DJANGO_DEBUG`, allowed hosts, Redis URL, JWT access/refresh lifetimes, email backend/from address, frontend URL, CORS origins, and the public frontend API URL. Local email defaults to Django's console backend. Use a real mail backend and tightly scoped host/CORS settings outside local development.
 
 ## Backend structure and API
 
@@ -170,7 +176,7 @@ Roles are ordered `OWNER > ADMIN > MEMBER > VIEWER`. The API independently enfor
 
 No role can change or remove their own membership. Comment authors can edit/delete their own comments; OWNER/ADMIN can moderate comment deletion. Account email and password changes are account-level operations available to any authenticated user, regardless of organization role. The frontend hides controls according to role, but authorization is enforced by the API.
 
-Security notes: use a unique, at least 32-character `DJANGO_SECRET_KEY`; do not commit `.env`; restrict `ALLOWED_HOSTS` and CORS origins; use TLS and production-grade secret storage in deployment; keep authentication throttling enabled; and use HTTPS/WSS in production. `localStorage` tokens are readable by JavaScript, so protect the frontend against cross-site scripting and plan the documented `httpOnly` cookie migration.
+Security notes: use a unique `DJANGO_SECRET_KEY` of at least 50 characters without placeholder text outside debug mode; do not commit `.env`; restrict `ALLOWED_HOSTS` and CORS origins; use TLS and production-grade secret storage in deployment; keep authentication throttling enabled; and use HTTPS/WSS in production. `localStorage` tokens are readable by JavaScript, so protect the frontend against cross-site scripting and plan the documented `httpOnly` cookie migration.
 
 ### Organization invitations
 

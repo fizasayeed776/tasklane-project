@@ -7,6 +7,28 @@ from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 env = os.environ.get
+
+
+def validate_secret_key(secret_key, debug):
+    if not secret_key or not secret_key.strip():
+        raise ImproperlyConfigured("DJANGO_SECRET_KEY must be set.")
+    if len(secret_key) < 32:
+        raise ImproperlyConfigured(
+            "DJANGO_SECRET_KEY must be at least 32 characters long."
+        )
+    if not debug:
+        if len(secret_key) < 50:
+            raise ImproperlyConfigured(
+                "DJANGO_SECRET_KEY must be at least 50 characters long outside debug mode."
+            )
+        placeholders = ("replace-me", "change-me", "django-insecure")
+        if any(placeholder in secret_key.lower() for placeholder in placeholders):
+            raise ImproperlyConfigured(
+                "DJANGO_SECRET_KEY must not contain a placeholder outside debug mode."
+            )
+    return secret_key
+
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
@@ -21,14 +43,8 @@ LOGGING = {
         },
     },
 }
-SECRET_KEY = env("DJANGO_SECRET_KEY", "")
-if not SECRET_KEY or not SECRET_KEY.strip():
-    raise ImproperlyConfigured(
-        "DJANGO_SECRET_KEY must be set to a secret of at least 32 characters."
-    )
-if len(SECRET_KEY) < 32:
-    raise ImproperlyConfigured("DJANGO_SECRET_KEY must be at least 32 characters long.")
 DEBUG = env("DJANGO_DEBUG", "0") == "1"
+SECRET_KEY = validate_secret_key(env("DJANGO_SECRET_KEY", ""), DEBUG)
 TIME_ZONE = "Asia/Karachi"
 USE_TZ = True
 ALLOWED_HOSTS = env("ALLOWED_HOSTS", "*").split(",")
