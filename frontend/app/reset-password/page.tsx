@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Suspense, FormEvent, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
-import { api, errorMessage } from "@/lib/api";
+import { api, apiFieldErrors, apiFormErrorMessage } from "@/lib/api";
 import AuthCard from "../components/AuthCard";
 import PasswordField from "../components/PasswordField";
 
@@ -16,14 +16,16 @@ function ResetPasswordForm() {
   const [confirmation, setConfirmation] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [passwordError, setPasswordError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
+    setPasswordError("");
     setMessage("");
     if (password !== confirmation) {
-      setError("The passwords do not match.");
+      setPasswordError("The passwords do not match.");
       return;
     }
     if (!uid || !token) {
@@ -39,7 +41,9 @@ function ResetPasswordForm() {
       });
       setMessage("Your password has been reset. You can now log in.");
     } catch (requestError) {
-      setError(errorMessage(requestError));
+      const fields = apiFieldErrors(requestError);
+      setPasswordError(fields.new_password?.[0] ?? "");
+      setError(apiFormErrorMessage(requestError, ["new_password"]));
     } finally {
       setSubmitting(false);
     }
@@ -54,7 +58,11 @@ function ResetPasswordForm() {
           autoComplete="new-password"
           minLength={8}
           value={password}
-          onChange={setPassword}
+          error={passwordError}
+          onChange={(value) => {
+            setPassword(value);
+            setPasswordError("");
+          }}
         />
         <PasswordField
           id="confirm-reset-password"
@@ -62,7 +70,10 @@ function ResetPasswordForm() {
           autoComplete="new-password"
           minLength={8}
           value={confirmation}
-          onChange={setConfirmation}
+          onChange={(value) => {
+            setConfirmation(value);
+            setPasswordError("");
+          }}
         />
         {message && (
           <p role="status" className="text-sm">

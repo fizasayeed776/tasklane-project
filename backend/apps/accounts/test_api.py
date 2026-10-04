@@ -71,6 +71,22 @@ def test_register_normalizes_email_and_rejects_case_insensitive_duplicate():
     assert first.json()["email"] == "ali@x.com"
     assert duplicate.status_code == 400
     assert duplicate.json()["success"] is False
+    assert duplicate.json()["error"]["message"] == (
+        "An account with this email already exists. Log in instead."
+    )
+    assert duplicate.json()["error"]["fields"] == {
+        "email": ["An account with this email already exists. Log in instead."]
+    }
+    assert duplicate.json()["error"]["details"] == {
+        "email": ["An account with this email already exists. Log in instead."]
+    }
+    assert "password" not in duplicate.json()["error"]["fields"]
+
+    same_case_duplicate = register(client, email="Ali@x.com")
+    assert same_case_duplicate.status_code == 400
+    assert same_case_duplicate.json()["error"]["fields"] == {
+        "email": ["An account with this email already exists. Log in instead."]
+    }
     assert User.objects.filter(email__iexact="ali@x.com").count() == 1
 
 
@@ -481,6 +497,7 @@ def test_auth_endpoints_are_throttled():
 def test_password_validation_and_user_manager():
     response = register(APIClient(), password="short")
     assert response.status_code == 400
+    assert set(response.json()["error"]["fields"]) == {"password"}
     assert not User.objects.filter(email="user@example.com").exists()
 
     superuser = User.objects.create_superuser("root@example.com", "StrongPass!234")

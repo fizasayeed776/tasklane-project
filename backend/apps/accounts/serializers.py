@@ -21,7 +21,13 @@ class LoginSerializer(TokenObtainPairSerializer):
 
 class RegisterSerializer(serializers.ModelSerializer):
     email = serializers.EmailField(
-        validators=[UniqueValidator(queryset=User.objects.all(), lookup="iexact")]
+        validators=[
+            UniqueValidator(
+                queryset=User.objects.all(),
+                lookup="iexact",
+                message="An account with this email already exists. Log in instead.",
+            )
+        ]
     )
     password = serializers.CharField(write_only=True)
     invite = serializers.CharField(write_only=True, required=False)
@@ -95,6 +101,7 @@ class AuthApiErrorDetailSerializer(serializers.Serializer):
     code = serializers.CharField()
     message = serializers.CharField()
     details = serializers.JSONField(required=False)
+    fields = serializers.JSONField(required=False)
 
 
 class AuthApiErrorSerializer(serializers.Serializer):
