@@ -20,7 +20,8 @@ def register_user(data):
     data = dict(data)
     invitation_token = data.pop("invite", None)
     user = User.objects.create_user(**data)
-    accept_pending_invitations(user, invitation_token)
+    if invitation_token:
+        accept_pending_invitations(user, invitation_token)
     return user
 
 
@@ -80,12 +81,6 @@ def change_email(user, new_email, current_password):
         [old_email],
     )
     return {"success": True}
-
-
-def accept_invitations_after_login(email):
-    user = selectors.user_by_email(email)
-    if user:
-        accept_pending_invitations(user)
 
 
 def send_password_reset(email):

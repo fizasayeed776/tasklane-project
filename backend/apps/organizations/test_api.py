@@ -256,28 +256,37 @@ def test_registration_accepts_matching_pending_invitation(org_world):
     assert invitation.accepted_at is not None
 
 
-def test_registration_auto_accepts_invitation_without_token_for_matching_email(
-    org_world,
-):
+def test_registration_without_token_does_not_accept_pending_invitation(org_world):
+    """Registering with a matching email but no token must NOT join the org.
+
+    Email ownership is only proven by clicking the emailed link.  Without the
+    token an attacker could register with a victim's address and gain access.
+    """
     invitation = PendingInvitation.objects.create(
         organization=org_world["org"],
-        email="new-user@example.com",
-        role=OrganizationMember.Role.VIEWER,
+        email="victim@example.com",
+        role=OrganizationMember.Role.ADMIN,
         invited_by=org_world["owner"],
     )
     response = APIClient().post(
         "/api/auth/register/",
-        {"email": invitation.email, "password": "StrongPass!234"},
+        {"email": "victim@example.com", "password": "StrongPass!234"},
         format="json",
     )
     assert response.status_code == 201
-    user = User.objects.get(email=invitation.email)
-    assert user.memberships.get(organization=org_world["org"]).role == "VIEWER"
+    user = User.objects.get(email="victim@example.com")
+    assert not user.memberships.filter(organization=org_world["org"]).exists()
     invitation.refresh_from_db()
-    assert invitation.accepted_at is not None
+    assert invitation.accepted_at is None
 
 
-def test_login_accepts_matching_pending_invitations(org_world):
+def test_login_does_not_accept_pending_invitations(org_world):
+    """Logging in must never auto-accept a pending invitation.
+
+    Existing registered users are added directly by invite_member, so a
+    PendingInvitation for a registered user's email is an edge case that must
+    not silently grant organization membership on login.
+    """
     invitee = User.objects.create_user("invitee@example.com", "StrongPass!234")
     invitation = PendingInvitation.objects.create(
         organization=org_world["org"],
@@ -291,9 +300,10 @@ def test_login_accepts_matching_pending_invitations(org_world):
         format="json",
     )
     assert response.status_code == 200
-    assert invitee.memberships.get(organization=org_world["org"]).role == "MEMBER"
+    invitee.refresh_from_db()
+    assert not invitee.memberships.filter(organization=org_world["org"]).exists()
     invitation.refresh_from_db()
-    assert invitation.accepted_at is not None
+    assert invitation.accepted_at is None
 
 
 @pytest.mark.parametrize(
