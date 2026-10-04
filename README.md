@@ -261,6 +261,47 @@ Celery Beat schedules `apps.tasks.jobs.flag_overdue_tasks` once per hour. The jo
 
 The Channels consumer is exposed at `/ws/notifications/?organization_id=<id>`. It validates the JWT and organization membership at connection time, sends organization events only to organization members, sends assignment notifications only to the assigned user, and rechecks membership/token expiry before delivering an event. Notifications cover task assignment, new comments, and status changes. The frontend notification navbar reconnects as the session or active organization changes.
 
+## Demo data and housekeeping
+
+### Seed demo data
+
+Populate a local environment with a complete demo organization, users, projects, tasks, comments, and activity entries generated through the same service layer used in production:
+
+```powershell
+docker compose exec backend python manage.py seed_demo
+```
+
+This creates the following accounts (password `DemoPass!234`):
+
+| Email | Display name | Role in Demo Org |
+| --- | --- | --- |
+| `owner@demo.test` | Demo Owner | Owner |
+| `admin@demo.test` | Demo Admin | Admin |
+| `member@demo.test` | Demo Member | Member |
+| `viewer@demo.test` | Demo Viewer | Viewer |
+| `outsider@demo.test` | Demo Outsider | Owner of Other Org (not in Demo Org) |
+
+Use `--password <value>` to change the password. Use `--force` to run against a non-debug environment (not recommended in production). The command is idempotent: running it twice does not create duplicates.
+
+### Housekeeping: prune stale data
+
+Remove accepted or expired `PendingInvitation` rows that are older than 30 days. Default is a **dry run** — nothing is deleted unless `--yes` is provided:
+
+```powershell
+# Show what would be deleted (dry run)
+docker compose exec backend python manage.py prune_stale_data
+
+# Delete stale invitations
+docker compose exec backend python manage.py prune_stale_data --yes
+
+# Also delete eligible orphaned user accounts
+docker compose exec backend python manage.py prune_stale_data --yes --users
+```
+
+The `--users` flag additionally lists or deletes accounts that have no organization membership, were created more than `--days` days ago (default 30), are not staff or superusers, and have not authored any task, comment, or activity entry. It never deletes a user who owns an organization, created a task, sent an invitation, or would cascade into other people's data.
+
+> **Note:** User accounts are **never deleted automatically** (no signals, no scheduled job). Users may belong to zero organizations legitimately — for example, an account that was created but not yet added to any workspace. Automatic deletion is opt-in only through `prune_stale_data --yes --users`. Accepted and expired `PendingInvitation` rows are pruned daily by the `prune-stale-invitations` Celery Beat task (they are not domain data and do not cascade into user records).
+
 ## Tests and linters
 
 Run backend checks in the Compose environment from the repository root:
