@@ -1,4 +1,5 @@
 from datetime import timedelta
+from importlib import import_module
 from urllib.parse import parse_qs, urlparse
 
 import pytest
@@ -54,10 +55,30 @@ def test_register_login_and_ignore_mass_assignment():
     assert not user.is_staff
     assert not user.is_superuser
 
-    tokens = login(client)
+    tokens = login(client, "USER@EXAMPLE.COM")
     assert tokens.status_code == 200
     assert set(tokens.json()) == {"access", "refresh"}
     assert login(client, password="wrong").status_code == 401
+
+
+def test_register_normalizes_email_and_rejects_case_insensitive_duplicate():
+    client = APIClient()
+
+    first = register(client, email="Ali@x.com")
+    duplicate = register(client, email="ali@x.com")
+
+    assert first.status_code == 201
+    assert first.json()["email"] == "ali@x.com"
+    assert duplicate.status_code == 400
+    assert duplicate.json()["success"] is False
+    assert User.objects.filter(email__iexact="ali@x.com").count() == 1
+
+
+def test_email_migration_reports_accounts_that_would_collide():
+    migration = import_module("apps.accounts.migrations.0002_case_insensitive_email")
+
+    with pytest.raises(RuntimeError, match="Ali@x.com.*ali@x.com"):
+        migration.ensure_no_email_collisions(["Ali@x.com", "ali@x.com"])
 
 
 def test_refresh_rotates_and_blacklists_previous_refresh_token():
@@ -324,7 +345,7 @@ def test_forgot_password_is_non_enumerating_and_reset_token_is_single_use():
 
     known = client.post(
         "/api/auth/password/forgot/",
-        {"email": "user@example.com"},
+        {"email": "USER@EXAMPLE.COM"},
         format="json",
     )
     unknown = client.post(

@@ -150,6 +150,21 @@ def test_member_cannot_invite_or_elevate_existing_membership(org_world):
     )
     assert response.status_code == 400
     assert response.json()["error"]["message"] == "This user is already a member."
+    differently_cased = client.post(
+        f"/api/organizations/{org_world['org'].id}/members/",
+        {"email": "MEMBER@EXAMPLE.COM", "role": OrganizationMember.Role.MEMBER},
+        format="json",
+    )
+    assert differently_cased.status_code == 400
+    assert not PendingInvitation.objects.filter(
+        organization=org_world["org"], email__iexact="member@example.com"
+    ).exists()
+    assert (
+        OrganizationMember.objects.filter(
+            organization=org_world["org"], user=member
+        ).count()
+        == 1
+    )
     member.refresh_from_db()
     assert member.memberships.get(organization=org_world["org"]).role == "MEMBER"
 
@@ -243,7 +258,7 @@ def test_registration_accepts_matching_pending_invitation(org_world):
     response = APIClient().post(
         "/api/auth/register/",
         {
-            "email": invitation.email,
+            "email": invitation.email.upper(),
             "password": "StrongPass!234",
             "invite": invitation.token,
         },
