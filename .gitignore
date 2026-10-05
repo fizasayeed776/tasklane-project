@@ -2,12 +2,16 @@
 *.py[cod]
 __pycache__/
 .pytest_cache/
+.ruff_cache/
 .coverage
 htmlcov/
 db.sqlite3
+staticfiles/
 backend/staticfiles/
-backend/celerybeat-schedule*
+celerybeat-schedule*
 node_modules/
 .next/
 coverage/
 *.log
+.vscode/
+.idea/
