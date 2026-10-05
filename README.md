@@ -35,49 +35,86 @@ HTTP REST and WebSocket traffic are served by the ASGI application. PostgreSQL s
 
 The supported local installation path runs the complete stack with Docker Compose. It needs Docker Desktop or Docker Engine with the Compose plugin and Git.
 
-### Docker setup
+### Quick start
 
-1. Create a local environment file and replace the example secrets:
+1. Clone the repository and change into its folder:
+
+   ```sh
+   git clone https://github.com/fizasayeed776/tasklane-project.git
+   cd tasklane-project
+   ```
+
+2. Copy the example environment file:
+
+   ```sh
+   cp .env.example .env
+   ```
+
+   On Windows PowerShell, use `Copy-Item .env.example .env`.
+
+3. Generate a unique `DJANGO_SECRET_KEY` and write it into `.env` **before the first start**. The default placeholder is deliberately rejected when `DJANGO_DEBUG=0`; the key must be at least 50 characters and must not contain placeholder text. These commands update `.env` without printing the generated key.
+
+   **Windows PowerShell** (run from the repository folder):
 
    ```powershell
-   Copy-Item .env.example .env
+   $path = Join-Path (Get-Location).Path ".env"
+   $bytes = New-Object byte[] 48
+   [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+   $key = [Convert]::ToBase64String($bytes).Replace('+','-').Replace('/','_').TrimEnd('=')
+   $text = [IO.File]::ReadAllText($path)
+   $text = [regex]::Replace($text, '(?m)^DJANGO_SECRET_KEY=[^\r\n]*', "DJANGO_SECRET_KEY=$key")
+   [IO.File]::WriteAllText($path, $text, (New-Object Text.UTF8Encoding($false)))
+   (Select-String -Path $path -Pattern "^DJANGO_SECRET_KEY=").Line -match "replace-me"
    ```
 
-   Before the first `docker compose up --build`, replace the placeholder `DJANGO_SECRET_KEY` in `.env`. With `DJANGO_DEBUG=0`, the placeholder is rejected when the backend starts. The key must be unique, at least 50 characters, and contain no placeholder text. Generate one with Docker, so local Python is not required:
+   The last line should print `False`. Run this block from the repository folder; `$path` resolves to the full path of that folder's `.env`.
 
-   ```powershell
-   docker compose run --rm --no-deps backend python -c "import secrets; print(secrets.token_urlsafe(64))"
+   **Linux/macOS**:
+
+   ```sh
+   key=$(openssl rand -base64 48 | tr '+/' '-_' | tr -d '=\n')
+   if sed --version >/dev/null 2>&1; then
+     sed -i "s|^DJANGO_SECRET_KEY=.*|DJANGO_SECRET_KEY=$key|" .env
+   else
+     sed -i '' "s|^DJANGO_SECRET_KEY=.*|DJANGO_SECRET_KEY=$key|" .env
+   fi
+   unset key
+   grep -c replace-me .env
    ```
 
-   Copy the generated value into `.env` as `DJANGO_SECRET_KEY`, set a strong PostgreSQL password, and do not commit `.env`. If startup reports:
+   The `sed` branch handles GNU sed and macOS/BSD sed. The final check should print `0`.
 
-   ```text
-   ImproperlyConfigured: DJANGO_SECRET_KEY must not contain a placeholder outside debug mode.
+4. Build and start the services:
+
+   ```sh
+   docker compose up --build
    ```
 
-   replace the placeholder value in `.env` with a generated key, then run `docker compose up --build -d` again.
+   Compose builds the frontend as a Next.js production image (`next build` during image creation and `next start` at runtime). It waits for PostgreSQL and Redis healthchecks before starting the API, Celery worker, or Beat. The backend applies committed database migrations and collects static assets before starting the ASGI server. In another terminal, use `docker compose ps` to check that the database and Redis are healthy and the API, worker, Beat, and frontend are running. Swagger UI assets are served locally rather than loaded from a CDN.
 
-2. Build and start all services in the background:
+   `NEXT_PUBLIC_API_URL` is embedded in the frontend image at build time and configures browser REST requests and the notifications WebSocket URL. Rebuild with `docker compose up --build` after changing frontend settings.
 
-   ```powershell
-   docker compose up --build -d
+5. Optionally load demo data:
+
+   ```sh
+   docker compose exec backend python manage.py seed_demo --force
    ```
 
-   Compose builds the frontend as a Next.js production image (`next build` during image creation and `next start` at runtime). It waits for PostgreSQL and Redis healthchecks before starting the API, Celery worker, or Beat. PostgreSQL health is checked with the configured `POSTGRES_USER` and `POSTGRES_DB`; Redis health is checked with `redis-cli ping`. The backend applies committed database migrations and collects static assets before starting the ASGI server. Swagger UI assets are served locally through WhiteNoise and drf-spectacular-sidecar rather than loaded from a CDN.
+   This creates a demo organization and these accounts (password `DemoPass!234`):
 
-   `NEXT_PUBLIC_API_URL` is embedded in the frontend image at build time and configures both browser REST requests and the notifications WebSocket URL. Rebuild with `docker compose up --build` after changing any `NEXT_PUBLIC_*` value. The image keeps its development tools installed, so `docker compose exec frontend npm test`, `docker compose exec frontend npm run lint`, and `docker compose exec frontend npm run format:check` remain available while the production server runs.
+   | Role | Email | Password |
+   | --- | --- | --- |
+   | Owner | `owner@demo.test` | `DemoPass!234` |
+   | Admin | `admin@demo.test` | `DemoPass!234` |
+   | Member | `member@demo.test` | `DemoPass!234` |
+   | Viewer | `viewer@demo.test` | `DemoPass!234` |
+   | Outsider | `outsider@demo.test` | `DemoPass!234` |
 
-   Check startup status with:
+   `--force` allows seeding when `DJANGO_DEBUG=0`; use it only for local/demo environments, never on a real production database.
 
-   ```powershell
-   docker compose ps
-   ```
-
-   Wait until the database and Redis report `healthy` and the API, worker, Beat, and frontend report `running`.
-
-3. Open:
-   - Web app: <http://localhost:3000>
-   - Interactive API reference (Swagger UI): <http://localhost:8000/api/docs/>
+6. Open the application and API reference:
+   - Frontend: <http://localhost:3000>
+   - Swagger UI: <http://localhost:8000/api/docs/>
    - OpenAPI document: <http://localhost:8000/api/schema/>
 
 Stop services with `docker compose down`. Database data is stored in the named `pgdata` volume and remains between restarts. To remove that data, explicitly run `docker compose down -v`.
@@ -85,6 +122,22 @@ Stop services with `docker compose down`. Database data is stored in the named `
 ### Environment configuration
 
 `.env.example` documents the supported variables: PostgreSQL database/user/password/host, required `DJANGO_SECRET_KEY` (at least 50 characters without placeholder text outside debug mode), `DJANGO_DEBUG`, allowed hosts, Redis URL, JWT access/refresh lifetimes, email backend/from address, frontend URL, CORS origins, and the public frontend API URL. Local email defaults to Django's console backend. Use a real mail backend and tightly scoped host/CORS settings outside local development.
+
+### Troubleshooting
+
+- **Services exit right after start:** run `docker compose ps -a` and `docker compose logs --tail 30 backend`. Django may report that `DJANGO_SECRET_KEY` contains a placeholder, is shorter than 50 characters, or is not set. Replace the value in `.env` with a newly generated key using Quick start step 3, then run `docker compose up --build` again. The PowerShell block must be run from the repository folder.
+- **“429 Too many requests”:** clear the development throttle counters with `docker compose exec redis redis-cli -n 1 flushdb`.
+- **Inviting people:** someone without an account must register through the invite link; the owner can use the **Copy invite link** button. Someone who already has an account is added directly. A person who registers without using the invite link gets their own organization instead.
+- **Frontend changes do not appear:** the frontend is a production image, so rebuild it with `docker compose up --build`.
+
+### Before deploying to a real server
+
+- Replace `DJANGO_SECRET_KEY` with a unique, securely stored key and change `POSTGRES_PASSWORD`.
+- Set `ALLOWED_HOSTS` to the real hostnames and keep `DJANGO_DEBUG=0`.
+- Configure SMTP for real email delivery (Mailpit is suitable for testing only).
+- Set `FRONTEND_URL` and `NEXT_PUBLIC_API_URL` to the deployed URLs.
+- Serve traffic over HTTPS behind a reverse proxy; configure `NUM_PROXIES` and `X-Forwarded-For` handling for the real client IP.
+- Never commit `.env`.
 
 ### Backend dependencies
 
