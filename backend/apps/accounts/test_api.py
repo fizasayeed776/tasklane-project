@@ -1,4 +1,4 @@
-from datetime import timedelta
+﻿from datetime import timedelta
 from importlib import import_module
 from urllib.parse import parse_qs, urlparse
 
@@ -18,9 +18,16 @@ pytestmark = pytest.mark.django_db
 
 @pytest.fixture(autouse=True)
 def isolate_throttle_cache():
+    from rest_framework.throttling import SimpleRateThrottle
+
+    # Save the current THROTTLE_RATES so each test starts with the real defaults
+    # and cannot inherit a patched value from a previous test.
+    original_rates = SimpleRateThrottle.THROTTLE_RATES
     cache.clear()
     yield
     cache.clear()
+    # Restore in case the test patched the class attribute directly.
+    SimpleRateThrottle.THROTTLE_RATES = original_rates
 
 
 def register(client, email="user@example.com", password="StrongPass!234", **extra):
@@ -354,7 +361,43 @@ def test_account_settings_endpoints_require_authentication(path, payload):
 
 
 @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+@override_settings(
+    REST_FRAMEWORK={
+        "DEFAULT_AUTHENTICATION_CLASSES": [
+            "rest_framework_simplejwt.authentication.JWTAuthentication"
+        ],
+        "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
+        "DEFAULT_FILTER_BACKENDS": [
+            "django_filters.rest_framework.DjangoFilterBackend",
+            "rest_framework.filters.SearchFilter",
+            "rest_framework.filters.OrderingFilter",
+        ],
+        "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
+        "PAGE_SIZE": 50,
+        "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+        "EXCEPTION_HANDLER": "config.exceptions.handler",
+        "DEFAULT_THROTTLE_CLASSES": ["rest_framework.throttling.ScopedRateThrottle"],
+        "DEFAULT_THROTTLE_RATES": {
+            "auth_login": "100/min",
+            "auth_register": "100/min",
+            "auth_refresh": "100/min",
+            "auth_password": "100/min",
+            "auth_account": "100/min",
+        },
+    }
+)
 def test_forgot_password_is_non_enumerating_and_reset_token_is_single_use():
+    from rest_framework.throttling import SimpleRateThrottle
+
+    old_rates = SimpleRateThrottle.THROTTLE_RATES
+    SimpleRateThrottle.THROTTLE_RATES = {
+        "auth_login": "100/min",
+        "auth_register": "100/min",
+        "auth_refresh": "100/min",
+        "auth_password": "100/min",
+        "auth_account": "100/min",
+    }
+    cache.clear()
     client = APIClient()
     assert register(client).status_code == 201
     existing_refresh = login(client).json()["refresh"]
@@ -426,6 +469,7 @@ def test_forgot_password_is_non_enumerating_and_reset_token_is_single_use():
     )
     assert weak.status_code == 400
     assert User.objects.get(email="user@example.com").check_password("ResetStrong!890")
+    SimpleRateThrottle.THROTTLE_RATES = old_rates
 
 
 def test_password_reset_rejects_malformed_uid_without_internal_error():
@@ -503,3 +547,140 @@ def test_password_validation_and_user_manager():
     superuser = User.objects.create_superuser("root@example.com", "StrongPass!234")
     assert superuser.is_staff
     assert superuser.is_superuser
+
+
+# ── Per-scope throttle tests ──────────────────────────────────────────────────
+# DRF sets SimpleRateThrottle.THROTTLE_RATES as a class attribute at import
+# time from api_settings.DEFAULT_THROTTLE_RATES.  Because override_settings
+# only updates the lazy api_settings object and not the already-set class
+# attribute, HTTP throttle tests must also patch the class attribute directly.
+
+_HIGH = {
+    "auth_login": "100/min",
+    "auth_register": "100/min",
+    "auth_refresh": "100/min",
+    "auth_password": "100/min",
+    "auth_account": "100/min",
+}
+
+
+@pytest.fixture()
+def throttle_rates(**rates):
+    """Context manager: set SimpleRateThrottle.THROTTLE_RATES for the test."""
+    from rest_framework.throttling import SimpleRateThrottle
+
+    def _fixture(override):
+        merged = {**_HIGH, **override}
+        old = SimpleRateThrottle.THROTTLE_RATES
+        SimpleRateThrottle.THROTTLE_RATES = merged
+        yield
+        SimpleRateThrottle.THROTTLE_RATES = old
+
+    return _fixture
+
+
+def test_each_view_has_its_own_throttle_scope():
+    """Each view carries the expected throttle scope name."""
+    from apps.accounts.views import (
+        ChangeEmailView,
+        ChangePasswordView,
+        ForgotPasswordView,
+        LoginView,
+        LogoutView,
+        RefreshView,
+        RegisterView,
+        ResetPasswordView,
+    )
+
+    assert LoginView.throttle_scope == "auth_login"
+    assert RegisterView.throttle_scope == "auth_register"
+    assert RefreshView.throttle_scope == "auth_refresh"
+    assert ForgotPasswordView.throttle_scope == "auth_password"
+    assert ResetPasswordView.throttle_scope == "auth_password"
+    assert LogoutView.throttle_scope == "auth_account"
+    assert ChangePasswordView.throttle_scope == "auth_account"
+    assert ChangeEmailView.throttle_scope == "auth_account"
+    # All unauthenticated scopes must be distinct so exhausting one
+    # never blocks another endpoint.
+    unauthenticated_scopes = [
+        LoginView.throttle_scope,
+        RegisterView.throttle_scope,
+        RefreshView.throttle_scope,
+        ForgotPasswordView.throttle_scope,
+    ]
+    assert len(set(unauthenticated_scopes)) == len(unauthenticated_scopes)
+
+
+def test_throttle_rates_are_env_configurable():
+    """Every auth scope has a rate entry in DEFAULT_THROTTLE_RATES."""
+    from django.conf import settings
+
+    rates = settings.REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"]
+    assert set(rates) >= {
+        "auth_login",
+        "auth_register",
+        "auth_refresh",
+        "auth_password",
+        "auth_account",
+    }
+
+
+def test_throttle_envelope_has_code_and_wait_message():
+    """Throttled exception produces the standard envelope with code THROTTLED."""
+    from rest_framework.exceptions import Throttled
+
+    from config.exceptions import handler
+
+    class _FakeRequest:
+        pass
+
+    exc = Throttled(wait=30)
+    resp = handler(exc, {"request": _FakeRequest(), "view": None})
+    assert resp.status_code == 429
+    body = resp.data
+    assert body["success"] is False
+    assert body["error"]["code"] == "THROTTLED"
+    msg = body["error"]["message"].lower()
+    assert "wait" in msg or "too many" in msg
+
+
+@pytest.mark.django_db(transaction=True)
+def test_login_scope_is_throttled_at_configured_limit():
+    """auth_login scope blocks after its configured limit."""
+    from rest_framework.throttling import SimpleRateThrottle
+
+    old_rates = SimpleRateThrottle.THROTTLE_RATES
+    SimpleRateThrottle.THROTTLE_RATES = {**_HIGH, "auth_login": "2/min"}
+    try:
+        cache.clear()
+        client = APIClient()
+        assert register(client).status_code == 201
+        login(client)
+        login(client)
+        blocked = login(client)
+        assert blocked.status_code == 429
+        assert blocked.json()["error"]["code"] == "THROTTLED"
+        assert "Retry-After" in blocked
+        cache.clear()
+    finally:
+        SimpleRateThrottle.THROTTLE_RATES = old_rates
+
+
+@pytest.mark.django_db(transaction=True)
+def test_login_scope_does_not_affect_register_scope():
+    """Exhausting auth_login leaves auth_register open."""
+    from rest_framework.throttling import SimpleRateThrottle
+
+    old_rates = SimpleRateThrottle.THROTTLE_RATES
+    SimpleRateThrottle.THROTTLE_RATES = {**_HIGH, "auth_login": "2/min"}
+    try:
+        cache.clear()
+        client = APIClient()
+        assert register(client).status_code == 201
+        login(client)
+        login(client)
+        assert login(client).status_code == 429
+        assert register(client, email="different@example.com").status_code == 201
+        cache.clear()
+    finally:
+        SimpleRateThrottle.THROTTLE_RATES = old_rates

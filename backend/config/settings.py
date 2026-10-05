@@ -135,6 +135,32 @@ EMAIL_USE_TLS = env("EMAIL_USE_TLS", "1") == "1"
 EMAIL_USE_SSL = env("EMAIL_USE_SSL", "0") == "1"
 _email_timeout = env("EMAIL_TIMEOUT", "")
 EMAIL_TIMEOUT = int(_email_timeout) if _email_timeout else None
+
+# ── Cache ─────────────────────────────────────────────────────────────────────
+# Tests set USE_LOCMEM_CACHE=1 (see pytest.ini) so throttle counters use an
+# isolated in-process cache and never depend on Redis being available.
+# In production/Docker the Redis-backed cache (db 1) shares counters across
+# all ASGI worker processes.
+if env("USE_LOCMEM_CACHE", "0") == "1":
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        }
+    }
+else:
+    _redis_cache_url = env("REDIS_URL", "redis://localhost:6379/0")
+    # Replace the DB number in the URL with /1 so the cache uses a separate
+    # Redis database from the Celery broker (which defaults to /0).
+    import re as _re
+
+    _redis_cache_url = _re.sub(r"/\d+$", "/1", _redis_cache_url)
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": _redis_cache_url,
+        }
+    }
+
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "rest_framework_simplejwt.authentication.JWTAuthentication"
@@ -150,7 +176,16 @@ REST_FRAMEWORK = {
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "EXCEPTION_HANDLER": "config.exceptions.handler",
     "DEFAULT_THROTTLE_CLASSES": ["rest_framework.throttling.ScopedRateThrottle"],
-    "DEFAULT_THROTTLE_RATES": {"auth": "10/min"},
+    "DEFAULT_THROTTLE_RATES": {
+        # Unauthenticated auth endpoints — each has its own scope so a burst
+        # on one path cannot block users on another.
+        "auth_login": env("THROTTLE_LOGIN", "10/min"),
+        "auth_register": env("THROTTLE_REGISTER", "10/min"),
+        "auth_refresh": env("THROTTLE_REFRESH", "60/min"),
+        "auth_password": env("THROTTLE_PASSWORD", "5/min"),
+        # Authenticated account-mutation endpoints (change-password/email, logout).
+        "auth_account": env("THROTTLE_ACCOUNT", "10/min"),
+    },
 }
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=int(env("JWT_ACCESS_MINUTES", "15"))),

@@ -1,7 +1,7 @@
 import logging
 
 from django.http import JsonResponse
-from rest_framework.exceptions import APIException, ValidationError
+from rest_framework.exceptions import APIException, Throttled, ValidationError
 from rest_framework.response import Response
 from rest_framework.views import exception_handler
 
@@ -60,6 +60,23 @@ def handler(exc, context):
             },
             status=500,
         )
+
+    # Throttled: produce a clean envelope and keep the Retry-After header that
+    # DRF already set on the response.
+    if isinstance(exc, Throttled):
+        wait = int(exc.wait) + 1 if exc.wait is not None else 60
+        resp.data = {
+            "success": False,
+            "error": {
+                "code": "THROTTLED",
+                "message": (
+                    f"Too many requests. Please wait {wait} second"
+                    f"{'s' if wait != 1 else ''} before trying again."
+                ),
+            },
+        }
+        return resp
+
     data = resp.data
     detail = data.get("detail") if isinstance(data, dict) and "detail" in data else None
     is_validation_error = isinstance(exc, ValidationError)
