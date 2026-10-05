@@ -191,6 +191,28 @@ No role can change or remove their own membership. Comment authors can edit/dele
 
 Security notes: use a unique `DJANGO_SECRET_KEY` of at least 50 characters without placeholder text outside debug mode; do not commit `.env`; restrict `ALLOWED_HOSTS` and CORS origins; use TLS and production-grade secret storage in deployment; keep authentication throttling enabled; and use HTTPS/WSS in production. `localStorage` tokens are readable by JavaScript, so protect the frontend against cross-site scripting and plan the documented `httpOnly` cookie migration.
 
+### Rate limiting
+
+Every unauthenticated auth endpoint has its own throttle scope so that a burst on one path (e.g. many token refreshes) cannot lock users out of another (e.g. login). Authenticated account-mutation endpoints share a separate scope.
+
+| Scope | Endpoints | Default | Environment variable |
+| --- | --- | --- | --- |
+| `auth_login` | `POST /api/auth/login/` | 10/min | `THROTTLE_LOGIN` |
+| `auth_register` | `POST /api/auth/register/` | 10/min | `THROTTLE_REGISTER` |
+| `auth_refresh` | `POST /api/auth/refresh/` | 60/min | `THROTTLE_REFRESH` |
+| `auth_password` | `POST /api/auth/password/forgot/`, `POST /api/auth/password/reset/` | 5/min | `THROTTLE_PASSWORD` |
+| `auth_account` | `POST /api/auth/password/change/`, `POST /api/auth/email/change/`, `POST /api/auth/logout/` | 10/min | `THROTTLE_ACCOUNT` |
+
+All limits are per IP address. A 429 response uses the standard error envelope with `"code": "THROTTLED"` and a `Retry-After` header.
+
+**Shared counters:** throttle counters are stored in Redis database 1 (derived from `REDIS_URL` by replacing the database path with `/1`) so all ASGI worker processes share the same counts and a single process restart does not reset them. Reset counters in development with:
+
+```powershell
+docker compose exec redis redis-cli -n 1 flushdb
+```
+
+**Reverse proxy:** if the application runs behind a load balancer or reverse proxy, configure `NUM_PROXIES` in Django settings so throttle limits apply against the real client IP from `X-Forwarded-For` rather than the proxy address. Without this, all users behind the same proxy share one counter.
+
 ### Organization invitations
 
 Organization members are managed from the dashboard for the selected organization. OWNER and ADMIN can invite a registered account directly as MEMBER or VIEWER; only OWNER may invite or promote an ADMIN. An invitee who already has an account is added immediately. An unregistered email receives a seven-day pending invitation and a Celery-delivered registration link at `/register?invite=<token>`. Pending invitations are unique per organization and case-insensitive email.
