@@ -1,7 +1,11 @@
+import logging
+
 from django.http import JsonResponse
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import APIException, Throttled, ValidationError
 from rest_framework.response import Response
 from rest_framework.views import exception_handler
+
+logger = logging.getLogger(__name__)
 
 
 def not_found(request, exception=None):
@@ -47,6 +51,8 @@ def handler(exc, context):
     """One error shape for every failure; never leaks stack traces."""
     resp = exception_handler(exc, context)
     if resp is None:
+        if not isinstance(exc, APIException):
+            logger.exception("Unhandled exception while processing API request")
         return Response(
             {
                 "success": False,
@@ -54,6 +60,23 @@ def handler(exc, context):
             },
             status=500,
         )
+
+    # Throttled: produce a clean envelope and keep the Retry-After header that
+    # DRF already set on the response.
+    if isinstance(exc, Throttled):
+        wait = int(exc.wait) + 1 if exc.wait is not None else 60
+        resp.data = {
+            "success": False,
+            "error": {
+                "code": "THROTTLED",
+                "message": (
+                    f"Too many requests. Please wait {wait} second"
+                    f"{'s' if wait != 1 else ''} before trying again."
+                ),
+            },
+        }
+        return resp
+
     data = resp.data
     detail = data.get("detail") if isinstance(data, dict) and "detail" in data else None
     is_validation_error = isinstance(exc, ValidationError)
@@ -66,5 +89,7 @@ def handler(exc, context):
     }
     if is_validation_error or not detail:
         error["details"] = data
+    if is_validation_error and isinstance(data, dict) and not detail:
+        error["fields"] = data
     resp.data = {"success": False, "error": error}
     return resp

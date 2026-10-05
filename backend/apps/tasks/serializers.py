@@ -51,6 +51,16 @@ class TaskSerializer(serializers.ModelSerializer):
 class CommentSerializer(serializers.ModelSerializer):
     user_name = serializers.CharField(source="user.display_name", read_only=True)
 
+    def validate(self, attrs):
+        if self.partial and "content" not in attrs:
+            raise serializers.ValidationError({"content": "This field is required."})
+        return attrs
+
+    def validate_content(self, value):
+        if not value.strip():
+            raise serializers.ValidationError("This field may not be blank.")
+        return value.strip()
+
     class Meta:
         model = Comment
         fields = [
@@ -66,6 +76,11 @@ class CommentSerializer(serializers.ModelSerializer):
 
 
 class ActivitySerializer(serializers.ModelSerializer):
+    actor_name = serializers.SerializerMethodField()
+
+    def get_actor_name(self, obj) -> str:
+        return obj.actor.display_name if obj.actor else ""
+
     class Meta:
         model = Activity
-        fields = ["id", "task", "verb", "message", "created_at"]
+        fields = ["id", "task", "verb", "message", "created_at", "actor_name"]

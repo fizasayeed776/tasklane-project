@@ -7,14 +7,46 @@ from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 env = os.environ.get
-SECRET_KEY = env("DJANGO_SECRET_KEY", "")
-if not SECRET_KEY or not SECRET_KEY.strip():
-    raise ImproperlyConfigured(
-        "DJANGO_SECRET_KEY must be set to a secret of at least 32 characters."
-    )
-if len(SECRET_KEY) < 32:
-    raise ImproperlyConfigured("DJANGO_SECRET_KEY must be at least 32 characters long.")
+
+
+def validate_secret_key(secret_key, debug):
+    if not secret_key or not secret_key.strip():
+        raise ImproperlyConfigured("DJANGO_SECRET_KEY must be set.")
+    if len(secret_key) < 32:
+        raise ImproperlyConfigured(
+            "DJANGO_SECRET_KEY must be at least 32 characters long."
+        )
+    if not debug:
+        if len(secret_key) < 50:
+            raise ImproperlyConfigured(
+                "DJANGO_SECRET_KEY must be at least 50 characters long outside debug mode."
+            )
+        placeholders = ("replace-me", "change-me", "django-insecure")
+        if any(placeholder in secret_key.lower() for placeholder in placeholders):
+            raise ImproperlyConfigured(
+                "DJANGO_SECRET_KEY must not contain a placeholder outside debug mode."
+            )
+    return secret_key
+
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {
+        "console": {"class": "logging.StreamHandler"},
+    },
+    "loggers": {
+        "config.exceptions": {
+            "handlers": ["console"],
+            "level": "ERROR",
+            "propagate": True,
+        },
+    },
+}
 DEBUG = env("DJANGO_DEBUG", "0") == "1"
+SECRET_KEY = validate_secret_key(env("DJANGO_SECRET_KEY", ""), DEBUG)
+TIME_ZONE = "Asia/Karachi"
+USE_TZ = True
 ALLOWED_HOSTS = env("ALLOWED_HOSTS", "*").split(",")
 INSTALLED_APPS = [
     "daphne",
@@ -93,6 +125,42 @@ CORS_ALLOW_HEADERS = (*default_headers, "x-organization-id")
 FRONTEND_URL = env("FRONTEND_URL", "http://localhost:3000")
 EMAIL_BACKEND = env("EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend")
 DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", "noreply@pmp.local")
+# SMTP settings — only meaningful when EMAIL_BACKEND is the SMTP backend.
+# Leave unset in development to use the console backend above.
+EMAIL_HOST = env("EMAIL_HOST", "")
+EMAIL_PORT = int(env("EMAIL_PORT", "587"))
+EMAIL_HOST_USER = env("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", "")
+EMAIL_USE_TLS = env("EMAIL_USE_TLS", "1") == "1"
+EMAIL_USE_SSL = env("EMAIL_USE_SSL", "0") == "1"
+_email_timeout = env("EMAIL_TIMEOUT", "")
+EMAIL_TIMEOUT = int(_email_timeout) if _email_timeout else None
+
+# ── Cache ─────────────────────────────────────────────────────────────────────
+# Tests set USE_LOCMEM_CACHE=1 (see pytest.ini) so throttle counters use an
+# isolated in-process cache and never depend on Redis being available.
+# In production/Docker the Redis-backed cache (db 1) shares counters across
+# all ASGI worker processes.
+if env("USE_LOCMEM_CACHE", "0") == "1":
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        }
+    }
+else:
+    _redis_cache_url = env("REDIS_URL", "redis://localhost:6379/0")
+    # Replace the DB number in the URL with /1 so the cache uses a separate
+    # Redis database from the Celery broker (which defaults to /0).
+    import re as _re
+
+    _redis_cache_url = _re.sub(r"/\d+$", "/1", _redis_cache_url)
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": _redis_cache_url,
+        }
+    }
+
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "rest_framework_simplejwt.authentication.JWTAuthentication"
@@ -108,7 +176,16 @@ REST_FRAMEWORK = {
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "EXCEPTION_HANDLER": "config.exceptions.handler",
     "DEFAULT_THROTTLE_CLASSES": ["rest_framework.throttling.ScopedRateThrottle"],
-    "DEFAULT_THROTTLE_RATES": {"auth": "10/min"},
+    "DEFAULT_THROTTLE_RATES": {
+        # Unauthenticated auth endpoints — each has its own scope so a burst
+        # on one path cannot block users on another.
+        "auth_login": env("THROTTLE_LOGIN", "10/min"),
+        "auth_register": env("THROTTLE_REGISTER", "10/min"),
+        "auth_refresh": env("THROTTLE_REFRESH", "60/min"),
+        "auth_password": env("THROTTLE_PASSWORD", "5/min"),
+        # Authenticated account-mutation endpoints (change-password/email, logout).
+        "auth_account": env("THROTTLE_ACCOUNT", "10/min"),
+    },
 }
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=int(env("JWT_ACCESS_MINUTES", "15"))),
@@ -139,6 +216,7 @@ SPECTACULAR_SETTINGS = {
     ],
 }
 CELERY_BROKER_URL = env("REDIS_URL", "redis://localhost:6379/0")
+CELERY_TIMEZONE = TIME_ZONE
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 CHANNEL_LAYERS = {
     "default": {
@@ -148,5 +226,9 @@ CHANNEL_LAYERS = {
 }
 CELERY_TASK_ALWAYS_EAGER = not env("POSTGRES_HOST")
 CELERY_BEAT_SCHEDULE = {
-    "overdue-check": {"task": "apps.tasks.jobs.flag_overdue_tasks", "schedule": 3600.0}
+    "overdue-check": {"task": "apps.tasks.jobs.flag_overdue_tasks", "schedule": 3600.0},
+    "prune-stale-invitations": {
+        "task": "apps.organizations.jobs.prune_stale_invitations",
+        "schedule": 86400.0,  # once per day
+    },
 }

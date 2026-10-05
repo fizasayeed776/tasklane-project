@@ -1,6 +1,5 @@
 from django.db import transaction
 from django.conf import settings
-from django.contrib.auth.base_user import BaseUserManager
 from django.contrib.auth.tokens import default_token_generator
 from django.core.mail import send_mail
 from django.utils.encoding import force_bytes, force_str
@@ -20,7 +19,15 @@ def register_user(data):
     data = dict(data)
     invitation_token = data.pop("invite", None)
     user = User.objects.create_user(**data)
-    accept_pending_invitations(user, invitation_token)
+    organization_id = None
+    if invitation_token:
+        from apps.organizations.models import OrganizationMember
+
+        accept_pending_invitations(user, invitation_token)
+        membership = OrganizationMember.objects.filter(user=user).first()
+        if membership:
+            organization_id = membership.organization_id
+    user._joined_organization_id = organization_id
     return user
 
 
@@ -60,32 +67,25 @@ def change_email(user, new_email, current_password):
     if not user.check_password(current_password):
         raise ValidationError("Current password is incorrect.")
 
-    normalized_email = BaseUserManager.normalize_email(new_email.strip()).lower()
-    if normalized_email.casefold() == user.email.casefold():
+    if new_email.casefold() == user.email.casefold():
         raise ValidationError("New email must be different from the current email.")
-    if selectors.email_is_used_by_another_user(normalized_email, user.pk):
+    if selectors.email_is_used_by_another_user(new_email, user.pk):
         raise ValidationError("A user with this email already exists.")
 
     old_email = user.email
-    user.email = normalized_email
+    user.email = new_email
     user.save(update_fields=["email"])
     send_mail(
         "Your Tasklane email address was changed",
         (
             f"The email address for your Tasklane account was changed to "
-            f"{normalized_email}. If you did not make this change, please contact "
+            f"{new_email}. If you did not make this change, please contact "
             "support immediately."
         ),
         settings.DEFAULT_FROM_EMAIL,
         [old_email],
     )
     return {"success": True}
-
-
-def accept_invitations_after_login(email):
-    user = selectors.user_by_email(email)
-    if user:
-        accept_pending_invitations(user)
 
 
 def send_password_reset(email):

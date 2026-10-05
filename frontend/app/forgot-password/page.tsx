@@ -3,18 +3,20 @@
 import Link from "next/link";
 import { FormEvent, useState } from "react";
 
-import { api, errorMessage } from "@/lib/api";
+import { api, apiFieldErrors, apiFormErrorMessage } from "@/lib/api";
 import AuthCard from "../components/AuthCard";
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [emailError, setEmailError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
+    setEmailError("");
     setMessage("");
     setSubmitting(true);
     try {
@@ -26,7 +28,9 @@ export default function ForgotPasswordPage() {
         "If an account exists for that email, a password-reset link has been sent.",
       );
     } catch (requestError) {
-      setError(errorMessage(requestError));
+      const fields = apiFieldErrors(requestError);
+      setEmailError(fields.email?.[0] ?? "");
+      setError(apiFormErrorMessage(requestError, ["email"]));
     } finally {
       setSubmitting(false);
     }
@@ -45,10 +49,20 @@ export default function ForgotPasswordPage() {
             type="email"
             autoComplete="email"
             value={email}
-            onChange={(event) => setEmail(event.target.value)}
+            aria-invalid={emailError ? true : undefined}
+            aria-describedby={emailError ? "forgot-email-error" : undefined}
+            onChange={(event) => {
+              setEmail(event.target.value);
+              setEmailError("");
+            }}
             required
           />
         </label>
+        {emailError && (
+          <p id="forgot-email-error" role="alert" className="text-danger">
+            {emailError}
+          </p>
+        )}
         {message && (
           <p role="status" className="text-sm">
             {message}

@@ -1,5 +1,7 @@
 from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
+from rest_framework.validators import UniqueValidator
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 from .models import User
 
@@ -11,9 +13,26 @@ class UserSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "email"]
 
 
+class LoginSerializer(TokenObtainPairSerializer):
+    def validate(self, attrs):
+        attrs[self.username_field] = attrs[self.username_field].strip().lower()
+        return super().validate(attrs)
+
+
 class RegisterSerializer(serializers.ModelSerializer):
+    email = serializers.EmailField(
+        validators=[
+            UniqueValidator(
+                queryset=User.objects.all(),
+                lookup="iexact",
+                message="An account with this email already exists. Log in instead.",
+            )
+        ]
+    )
     password = serializers.CharField(write_only=True)
     invite = serializers.CharField(write_only=True, required=False)
+    # Returned after registration when an invitation was accepted.
+    organization_id = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -23,11 +42,18 @@ class RegisterSerializer(serializers.ModelSerializer):
             "first_name",
             "password",
             "invite",
+            "organization_id",
         ]  # explicit: no mass assignment of is_staff etc.
+
+    def validate_email(self, value):
+        return value.strip().lower()
 
     def validate_password(self, value):
         validate_password(value)
         return value
+
+    def get_organization_id(self, obj) -> int | None:
+        return getattr(obj, "_joined_organization_id", None)
 
 
 class ChangePasswordSerializer(serializers.Serializer):
@@ -43,9 +69,15 @@ class ChangeEmailSerializer(serializers.Serializer):
     new_email = serializers.EmailField()
     current_password = serializers.CharField()
 
+    def validate_new_email(self, value):
+        return value.strip().lower()
+
 
 class ForgotSerializer(serializers.Serializer):
     email = serializers.EmailField()
+
+    def validate_email(self, value):
+        return value.strip().lower()
 
 
 class ResetSerializer(serializers.Serializer):
@@ -75,6 +107,7 @@ class AuthApiErrorDetailSerializer(serializers.Serializer):
     code = serializers.CharField()
     message = serializers.CharField()
     details = serializers.JSONField(required=False)
+    fields = serializers.JSONField(required=False)
 
 
 class AuthApiErrorSerializer(serializers.Serializer):

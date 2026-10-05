@@ -5,7 +5,7 @@ from django.db import transaction
 from django.utils import timezone
 
 
-@shared_task
+@shared_task(autoretry_for=(Exception,), retry_backoff=True, max_retries=3)
 def send_assignment_email(task_id):
     from .models import Task
 

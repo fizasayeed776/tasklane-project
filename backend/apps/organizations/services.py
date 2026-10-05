@@ -28,6 +28,14 @@ def ensure_role(user, org_id, minimum):
     return role
 
 
+def _unassign_tasks_in_organization(user, org):
+    from apps.tasks.models import Task
+
+    Task.objects.filter(project__organization=org, assigned_to=user).update(
+        assigned_to=None
+    )
+
+
 @transaction.atomic
 def create_organization(user, name):
     org = Organization.objects.create(
@@ -107,37 +115,32 @@ def _validate_invitation(invitation, email=None):
 
 
 @transaction.atomic
-def accept_pending_invitations(user, token=None):
-    now = timezone.now()
-    if token:
-        invitation = (
-            PendingInvitation.objects.select_for_update().filter(token=token).first()
-        )
-        if invitation is None:
-            raise ValidationError({"invite": "This invitation is invalid or expired."})
-        _validate_invitation(invitation, user.email)
-        invitations = [invitation]
-    else:
-        invitations = list(
-            PendingInvitation.objects.select_for_update().filter(
-                email__iexact=user.email,
-                accepted_at__isnull=True,
-                expires_at__gt=now,
-            )
-        )
+def accept_pending_invitations(user, token):
+    """Accept a pending invitation by token.
 
-    accepted = 0
-    for invitation in invitations:
-        _validate_invitation(invitation, user.email)
-        OrganizationMember.objects.get_or_create(
-            organization=invitation.organization,
-            user=user,
-            defaults={"role": invitation.role},
-        )
-        invitation.accepted_at = now
-        invitation.save(update_fields=["accepted_at"])
-        accepted += 1
-    return accepted
+    A token is always required — email ownership is only proven by clicking
+    the emailed link.  Registering or logging in without the token never
+    grants organization membership.
+    """
+    if not token:
+        raise ValidationError({"invite": "An invitation token is required."})
+
+    invitation = (
+        PendingInvitation.objects.select_for_update().filter(token=token).first()
+    )
+    if invitation is None:
+        raise ValidationError({"invite": "This invitation is invalid or expired."})
+
+    _validate_invitation(invitation, user.email)
+
+    OrganizationMember.objects.get_or_create(
+        organization=invitation.organization,
+        user=user,
+        defaults={"role": invitation.role},
+    )
+    invitation.accepted_at = timezone.now()
+    invitation.save(update_fields=["accepted_at"])
+    return 1
 
 
 @transaction.atomic
@@ -174,6 +177,7 @@ def remove_member(actor, org, member):
         raise PermissionDenied("The organization owner cannot be removed.")
     if actor_role != R.OWNER and member.role not in {R.MEMBER, R.VIEWER}:
         raise PermissionDenied("Admins can only manage members and viewers.")
+    _unassign_tasks_in_organization(member.user, org)
     member.delete()
 
 
@@ -253,13 +257,7 @@ def leave_organization(actor, org):
             }
         )
 
-    # Unassign tasks this user owns in this organization
-    from apps.tasks.models import Task
-
-    Task.objects.filter(project__organization=org, assigned_to=actor).update(
-        assigned_to=None
-    )
-
+    _unassign_tasks_in_organization(actor, org)
     membership.delete()
 
 

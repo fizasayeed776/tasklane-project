@@ -150,6 +150,21 @@ def test_member_cannot_invite_or_elevate_existing_membership(org_world):
     )
     assert response.status_code == 400
     assert response.json()["error"]["message"] == "This user is already a member."
+    differently_cased = client.post(
+        f"/api/organizations/{org_world['org'].id}/members/",
+        {"email": "MEMBER@EXAMPLE.COM", "role": OrganizationMember.Role.MEMBER},
+        format="json",
+    )
+    assert differently_cased.status_code == 400
+    assert not PendingInvitation.objects.filter(
+        organization=org_world["org"], email__iexact="member@example.com"
+    ).exists()
+    assert (
+        OrganizationMember.objects.filter(
+            organization=org_world["org"], user=member
+        ).count()
+        == 1
+    )
     member.refresh_from_db()
     assert member.memberships.get(organization=org_world["org"]).role == "MEMBER"
 
@@ -173,11 +188,11 @@ def test_unregistered_invite_creates_pending_invitation(org_world):
         format="json",
     )
     assert response.status_code == 201
-    assert response.json() == {
-        "email": "unknown@example.com",
-        "role": OrganizationMember.Role.MEMBER,
-        "pending": True,
-    }
+    assert response.json()["email"] == "unknown@example.com"
+    assert response.json()["role"] == OrganizationMember.Role.MEMBER
+    assert response.json()["pending"] is True
+    assert "/register?invite=" in response.json()["invite_url"]
+    assert response.json()["expires_at"] is not None
     invitation = PendingInvitation.objects.get(
         organization=org_world["org"], email="unknown@example.com"
     )
@@ -243,7 +258,7 @@ def test_registration_accepts_matching_pending_invitation(org_world):
     response = APIClient().post(
         "/api/auth/register/",
         {
-            "email": invitation.email,
+            "email": invitation.email.upper(),
             "password": "StrongPass!234",
             "invite": invitation.token,
         },
@@ -256,28 +271,37 @@ def test_registration_accepts_matching_pending_invitation(org_world):
     assert invitation.accepted_at is not None
 
 
-def test_registration_auto_accepts_invitation_without_token_for_matching_email(
-    org_world,
-):
+def test_registration_without_token_does_not_accept_pending_invitation(org_world):
+    """Registering with a matching email but no token must NOT join the org.
+
+    Email ownership is only proven by clicking the emailed link.  Without the
+    token an attacker could register with a victim's address and gain access.
+    """
     invitation = PendingInvitation.objects.create(
         organization=org_world["org"],
-        email="new-user@example.com",
-        role=OrganizationMember.Role.VIEWER,
+        email="victim@example.com",
+        role=OrganizationMember.Role.ADMIN,
         invited_by=org_world["owner"],
     )
     response = APIClient().post(
         "/api/auth/register/",
-        {"email": invitation.email, "password": "StrongPass!234"},
+        {"email": "victim@example.com", "password": "StrongPass!234"},
         format="json",
     )
     assert response.status_code == 201
-    user = User.objects.get(email=invitation.email)
-    assert user.memberships.get(organization=org_world["org"]).role == "VIEWER"
+    user = User.objects.get(email="victim@example.com")
+    assert not user.memberships.filter(organization=org_world["org"]).exists()
     invitation.refresh_from_db()
-    assert invitation.accepted_at is not None
+    assert invitation.accepted_at is None
 
 
-def test_login_accepts_matching_pending_invitations(org_world):
+def test_login_does_not_accept_pending_invitations(org_world):
+    """Logging in must never auto-accept a pending invitation.
+
+    Existing registered users are added directly by invite_member, so a
+    PendingInvitation for a registered user's email is an edge case that must
+    not silently grant organization membership on login.
+    """
     invitee = User.objects.create_user("invitee@example.com", "StrongPass!234")
     invitation = PendingInvitation.objects.create(
         organization=org_world["org"],
@@ -291,9 +315,10 @@ def test_login_accepts_matching_pending_invitations(org_world):
         format="json",
     )
     assert response.status_code == 200
-    assert invitee.memberships.get(organization=org_world["org"]).role == "MEMBER"
+    invitee.refresh_from_db()
+    assert not invitee.memberships.filter(organization=org_world["org"]).exists()
     invitation.refresh_from_db()
-    assert invitation.accepted_at is not None
+    assert invitation.accepted_at is None
 
 
 @pytest.mark.parametrize(
@@ -764,6 +789,50 @@ def test_viewer_can_leave_organization(org_world):
     assert response.status_code == 204
 
 
+def test_removing_member_unassigns_only_tasks_in_that_organization(org_world):
+    from apps.tasks.models import Task
+
+    member = User.objects.create_user("removed@example.com", "StrongPass!234")
+    membership = OrganizationMember.objects.create(
+        organization=org_world["org"], user=member, role=OrganizationMember.Role.MEMBER
+    )
+    OrganizationMember.objects.create(
+        organization=org_world["other_org"],
+        user=member,
+        role=OrganizationMember.Role.VIEWER,
+    )
+    task = Task.objects.create(
+        project=Project.objects.create(
+            organization=org_world["org"],
+            name="Member project",
+            created_by=org_world["owner"],
+        ),
+        title="Assigned in removed organization",
+        created_by=org_world["owner"],
+        assigned_to=member,
+    )
+    other_task = Task.objects.create(
+        project=Project.objects.create(
+            organization=org_world["other_org"],
+            name="Other organization project",
+            created_by=org_world["outsider"],
+        ),
+        title="Assigned elsewhere",
+        created_by=org_world["outsider"],
+        assigned_to=member,
+    )
+
+    response = client_for(org_world["owner"]).delete(
+        f"/api/organizations/{org_world['org'].id}/members/{membership.id}/"
+    )
+
+    assert response.status_code == 204
+    task.refresh_from_db()
+    other_task.refresh_from_db()
+    assert task.assigned_to is None
+    assert other_task.assigned_to_id == member.id
+
+
 def test_admin_can_leave_organization(org_world):
     admin = User.objects.create_user("admin@example.com", "StrongPass!234")
     OrganizationMember.objects.create(
@@ -950,3 +1019,127 @@ def test_delete_organization_missing_name_field_returns_400(org_world):
     )
     assert response.status_code == 400
     assert response.json()["success"] is False
+
+
+# ── invite_url and expires_at in API response ─────────────────────────────────
+
+
+def test_pending_invite_response_includes_invite_url_and_expiry(org_world):
+    """invite_url and expires_at are returned for pending (unregistered) invitations."""
+    from django.conf import settings
+
+    response = client_for(org_world["owner"]).post(
+        f"/api/organizations/{org_world['org'].id}/members/",
+        {"email": "newperson@example.com", "role": OrganizationMember.Role.MEMBER},
+        format="json",
+    )
+    assert response.status_code == 201
+    data = response.json()
+    assert data["pending"] is True
+    assert data["invite_url"].startswith(settings.FRONTEND_URL)
+    assert "/register?invite=" in data["invite_url"]
+    assert data["expires_at"] is not None
+
+
+def test_direct_add_response_has_no_invite_url(org_world):
+    """Registered users are added directly; the response must contain no invite_url."""
+    registered = User.objects.create_user("direct@example.com", "StrongPass!234")
+    response = client_for(org_world["owner"]).post(
+        f"/api/organizations/{org_world['org'].id}/members/",
+        {"email": registered.email, "role": OrganizationMember.Role.MEMBER},
+        format="json",
+    )
+    assert response.status_code == 201
+    data = response.json()
+    assert data["pending"] is False
+    assert "invite_url" not in data
+
+
+def test_invitation_email_body_contains_frontend_url_link(org_world):
+    """The emailed link is built from FRONTEND_URL, not hard-coded to localhost."""
+    from django.test import override_settings
+
+    invitation = PendingInvitation.objects.create(
+        organization=org_world["org"],
+        email="linkcheck@example.com",
+        role=OrganizationMember.Role.MEMBER,
+        invited_by=org_world["owner"],
+    )
+    with override_settings(
+        EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+        FRONTEND_URL="https://app.example.com",
+    ):
+        from apps.organizations.tasks import send_invitation_email
+
+        send_invitation_email(invitation.id)
+
+    assert len(mail.outbox) == 1
+    assert (
+        f"https://app.example.com/register?invite={invitation.token}"
+        in mail.outbox[0].body
+    )
+
+
+def test_smtp_settings_are_read_from_environment():
+    """SMTP env vars are plumbed into Django's email settings."""
+    from django.conf import settings
+    from django.test import override_settings
+
+    with override_settings(
+        EMAIL_HOST="smtp.example.com",
+        EMAIL_PORT=465,
+        EMAIL_HOST_USER="user@example.com",
+        EMAIL_USE_TLS=False,
+        EMAIL_USE_SSL=True,
+    ):
+        assert settings.EMAIL_HOST == "smtp.example.com"
+        assert settings.EMAIL_PORT == 465
+        assert settings.EMAIL_HOST_USER == "user@example.com"
+        assert settings.EMAIL_USE_TLS is False
+        assert settings.EMAIL_USE_SSL is True
+
+
+def test_invitation_task_has_retry_configuration():
+    """send_invitation_email must retry on failure."""
+    from apps.organizations.tasks import send_invitation_email
+
+    assert send_invitation_email.max_retries == 3
+
+
+def test_assignment_email_task_has_retry_configuration():
+    """send_assignment_email must retry on failure."""
+    from apps.tasks.jobs import send_assignment_email
+
+    assert send_assignment_email.max_retries == 3
+
+
+def test_register_with_invite_returns_organization_id(org_world):
+    """Registration response includes the joined organization's id when an invite is used."""
+    invitation = PendingInvitation.objects.create(
+        organization=org_world["org"],
+        email="joiner@example.com",
+        role=OrganizationMember.Role.MEMBER,
+        invited_by=org_world["owner"],
+    )
+    response = APIClient().post(
+        "/api/auth/register/",
+        {
+            "email": invitation.email,
+            "password": "StrongPass!234",
+            "invite": invitation.token,
+        },
+        format="json",
+    )
+    assert response.status_code == 201
+    assert response.json()["organization_id"] == org_world["org"].id
+
+
+def test_register_without_invite_returns_null_organization_id():
+    """Without an invite, organization_id is null in the registration response."""
+    response = APIClient().post(
+        "/api/auth/register/",
+        {"email": "noinvite@example.com", "password": "StrongPass!234"},
+        format="json",
+    )
+    assert response.status_code == 201
+    assert response.json()["organization_id"] is None

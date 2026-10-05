@@ -15,6 +15,7 @@ import {
   canManage,
   canWrite,
   errorMessage,
+  fetchAllPages,
   Org,
   OrgMember,
   Project,
@@ -153,13 +154,15 @@ export default function ProjectClient({ id }: { id: string }) {
   });
   const tasks = useQuery<{ results: Task[] }>({
     queryKey: tasksKey,
-    queryFn: () => {
+    queryFn: async () => {
       const params = new URLSearchParams({ project: id });
       if (filters.search) params.set("search", filters.search);
       if (filters.status) params.set("status", filters.status);
       if (filters.priority) params.set("priority", filters.priority);
       if (filters.assigned_to) params.set("assigned_to", filters.assigned_to);
-      return api(`/api/tasks/?${params.toString()}`);
+      return {
+        results: await fetchAllPages<Task>(`/api/tasks/?${params.toString()}`),
+      };
     },
   });
   const role = orgs.data?.find((o) => o.id === orgId)?.role;

@@ -117,13 +117,13 @@ The models also receive normal primary-key indexes and Django's implicit indexes
 
 | Model | Index / constraint | Columns / predicate | Why it exists |
 | --- | --- | --- | --- |
-| `User` | Unique email constraint | `email` | Email is the login identifier; enforces case-normalized unique account identity and supports login lookup. |
+| `User` | `user_email_ci_unique` unique constraint | `(LOWER(email))` | Email is the login identifier; registration normalizes email casing and the database prevents case-insensitive duplicates. |
 | `Organization` | Unique slug constraint | `slug` | Prevents duplicate organization slugs and supports direct slug lookup. |
 | `OrganizationMember` | `uniq_member_per_org` unique constraint | `(organization_id, user_id)` | Prevents duplicate membership/role rows and efficiently answers whether a user belongs to an organization. The leading organization column also supports listing its members. |
 | `OrganizationMember` | `member_user_idx` | `(user_id)` | Supports the frequent reverse lookup of all organizations for a user and the membership-scoped tenant filters. |
 | `PendingInvitation` | Unique `token` constraint | `(token)` | Provides a unique, indexed lookup key for the registration link and prevents two invitations from sharing a one-time token. |
 | `PendingInvitation` | `uniq_invite_org_email` unique constraint | `(organization_id, LOWER(email))` | Enforces one invitation per organization and case-insensitive email, matching service lookup and preventing duplicate pending memberships. |
-| `PendingInvitation` | `invite_email_expiry_idx` | `(email, expires_at)` | Supports invitee-email lookup during registration/login acceptance and expiry filtering. |
+| `PendingInvitation` | `invite_email_expiry_idx` | `(email, expires_at)` | Supports invitee-email lookup during token-based registration acceptance and expiry filtering. |
 | `PendingInvitation` | `invite_org_pending_idx` | `(organization_id, accepted_at)` | Supports organization-level pending-invitation lookup and filtering accepted invitations. |
 | `Project` | `proj_org_status_idx` | `(organization_id, status, created_at DESC)` | Matches project list access patterns: one organization, optional active/archive status, newest first. |
 | `Task` | `task_proj_status_idx` | `(project_id, status)` | Supports project Kanban boards and task status filtering within a project. |

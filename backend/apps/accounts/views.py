@@ -16,6 +16,7 @@ from .serializers import (
     ChangePasswordSerializer,
     ForgotSerializer,
     LogoutSerializer,
+    LoginSerializer,
     PasswordChangeResponseSerializer,
     RegisterSerializer,
     ResetSerializer,
@@ -24,11 +25,37 @@ from .serializers import (
 )
 
 
-class ThrottledMixin:
-    throttle_scope = "auth"  # brute-force protection: 10 req/min
+# Each unauthenticated auth endpoint gets its own throttle scope so that a
+# burst on one endpoint (e.g. many refresh calls) cannot lock users out of
+# another (e.g. login).  Authenticated account-mutation endpoints share a
+# separate scope so they are never grouped with the unauthenticated paths.
 
 
-class RegisterView(ThrottledMixin, generics.CreateAPIView):
+class _LoginThrottle:
+    throttle_scope = "auth_login"
+
+
+class _RegisterThrottle:
+    throttle_scope = "auth_register"
+
+
+class _RefreshThrottle:
+    throttle_scope = "auth_refresh"
+
+
+class _PasswordThrottle:
+    """Shared by forgot-password and reset-password."""
+
+    throttle_scope = "auth_password"
+
+
+class _AccountThrottle:
+    """Authenticated account-mutation endpoints (change-password, change-email, logout)."""
+
+    throttle_scope = "auth_account"
+
+
+class RegisterView(_RegisterThrottle, generics.CreateAPIView):
     serializer_class = RegisterSerializer
     permission_classes = [AllowAny]
     authentication_classes: list = []
@@ -37,19 +64,15 @@ class RegisterView(ThrottledMixin, generics.CreateAPIView):
         serializer.instance = services.register_user(serializer.validated_data)
 
 
-class LoginView(ThrottledMixin, TokenObtainPairView):
-    def post(self, request, *args, **kwargs):
-        response = super().post(request, *args, **kwargs)
-        if response.status_code == status.HTTP_200_OK:
-            services.accept_invitations_after_login(request.data.get("email", ""))
-        return response
+class LoginView(_LoginThrottle, TokenObtainPairView):
+    serializer_class = LoginSerializer
 
 
-class RefreshView(ThrottledMixin, TokenRefreshView):
+class RefreshView(_RefreshThrottle, TokenRefreshView):
     pass
 
 
-class LogoutView(ThrottledMixin, APIView):
+class LogoutView(_AccountThrottle, APIView):
     permission_classes = [IsAuthenticatedAccountUser]
 
     @extend_schema(request=LogoutSerializer, responses={204: None})
@@ -69,7 +92,7 @@ class MeView(generics.RetrieveUpdateAPIView):
         return self.request.user
 
 
-class ChangePasswordView(ThrottledMixin, APIView):
+class ChangePasswordView(_AccountThrottle, APIView):
     permission_classes = [IsAuthenticatedAccountUser]
 
     @extend_schema(
@@ -98,7 +121,7 @@ class ChangePasswordView(ThrottledMixin, APIView):
         return Response(result)
 
 
-class ChangeEmailView(ThrottledMixin, APIView):
+class ChangeEmailView(_AccountThrottle, APIView):
     permission_classes = [IsAuthenticatedAccountUser]
 
     @extend_schema(
@@ -127,7 +150,7 @@ class ChangeEmailView(ThrottledMixin, APIView):
         return Response(result)
 
 
-class ForgotPasswordView(ThrottledMixin, APIView):
+class ForgotPasswordView(_PasswordThrottle, APIView):
     permission_classes = [AllowAny]
     authentication_classes: list = []
 
@@ -141,7 +164,7 @@ class ForgotPasswordView(ThrottledMixin, APIView):
         )  # same answer either way: no account enumeration
 
 
-class ResetPasswordView(ThrottledMixin, APIView):
+class ResetPasswordView(_PasswordThrottle, APIView):
     permission_classes = [AllowAny]
     authentication_classes: list = []
 

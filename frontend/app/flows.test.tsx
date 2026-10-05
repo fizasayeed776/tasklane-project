@@ -17,15 +17,34 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api")>();
-  return { ...actual, api: mocks.api };
+  return {
+    ...actual,
+    api: mocks.api,
+    fetchAllPages: async (
+      path: string,
+      onPage?: (page: { count?: number }) => void,
+    ) => {
+      const results = [];
+      let next: string | null | undefined = path;
+      while (next) {
+        const page = await mocks.api(next);
+        onPage?.(page);
+        results.push(...page.results);
+        next = page.next;
+      }
+      return results;
+    },
+  };
 });
 
 import Login from "./login/LoginForm";
+import RegisterForm from "./register/RegisterForm";
 import ProjectPage from "./(app)/projects/[id]/ProjectClient";
 import TaskPage from "./(app)/tasks/[id]/TaskClient";
 import AppShell from "./components/AppShell";
 import { ToastProvider } from "./components/ToastProvider";
 import Dashboard from "./(app)/dashboard/DashboardClient";
+import { ApiError } from "@/lib/api";
 
 class MockWebSocket {
   static instances: MockWebSocket[] = [];
@@ -172,6 +191,87 @@ describe("frontend user flows", () => {
     });
     expect(localStorage.getItem("access")).toBe("access-token");
     expect(localStorage.getItem("refresh")).toBe("refresh-token");
+  });
+
+  it("shows duplicate registration email errors under email with a login link", async () => {
+    const duplicateMessage =
+      "An account with this email already exists. Log in instead.";
+    mocks.api.mockRejectedValue(
+      new ApiError("INVALID", duplicateMessage, 400, {
+        email: [duplicateMessage],
+      }),
+    );
+    render(<RegisterForm />);
+    fireEvent.change(screen.getByPlaceholderText("Email"), {
+      target: { value: "already@example.com" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("Password"), {
+      target: { value: "StrongPass!234" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+
+    const email = screen.getByPlaceholderText("Email");
+    const password = screen.getByPlaceholderText("Password");
+    const emailError = await screen.findByRole("alert");
+    expect(emailError).toHaveTextContent(duplicateMessage);
+    expect(email).toHaveAttribute("aria-invalid", "true");
+    expect(emailError.id).toBe(email.getAttribute("aria-describedby"));
+    expect(password).not.toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByRole("link", { name: "Log in" })).toHaveAttribute(
+      "href",
+      "/login",
+    );
+  });
+
+  it("shows a weak password error under the registration password input", async () => {
+    mocks.api.mockRejectedValue(
+      new ApiError("INVALID", "This password is too common.", 400, {
+        password: ["This password is too common."],
+      }),
+    );
+    render(<RegisterForm />);
+    fireEvent.change(screen.getByPlaceholderText("Email"), {
+      target: { value: "new@example.com" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("Password"), {
+      target: { value: "StrongPass!234" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+
+    const password = screen.getByPlaceholderText("Password");
+    const passwordError = await screen.findByRole("alert");
+    expect(passwordError).toHaveTextContent("This password is too common.");
+    expect(passwordError.id).toBe(password.getAttribute("aria-describedby"));
+    expect(password).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByPlaceholderText("Email")).not.toHaveAttribute(
+      "aria-invalid",
+      "true",
+    );
+  });
+
+  it("clears a registration email error when the email is edited", async () => {
+    const duplicateMessage =
+      "An account with this email already exists. Log in instead.";
+    mocks.api.mockRejectedValue(
+      new ApiError("INVALID", duplicateMessage, 400, {
+        email: [duplicateMessage],
+      }),
+    );
+    render(<RegisterForm />);
+    const email = screen.getByPlaceholderText("Email");
+    fireEvent.change(email, { target: { value: "already@example.com" } });
+    fireEvent.change(screen.getByPlaceholderText("Password"), {
+      target: { value: "StrongPass!234" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      duplicateMessage,
+    );
+
+    fireEvent.change(email, { target: { value: "different@example.com" } });
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(email).not.toHaveAttribute("aria-invalid", "true");
   });
 
   it("shows password visibility toggle on the login form", () => {
@@ -448,6 +548,49 @@ describe("frontend user flows", () => {
     expect(window.location.search).toBe(
       "?status=IN_PROGRESS&priority=HIGH&assigned_to=5",
     );
+  });
+
+  it("renders project tasks returned on page two", async () => {
+    const pageTwoTask = {
+      id: 22,
+      project: 1,
+      organization: 2,
+      title: "Task from page two",
+      description: "",
+      status: "TODO",
+      priority: "MEDIUM",
+      assigned_to: null,
+      assigned_to_name: null,
+      created_by: 5,
+      created_by_name: "Avery",
+      due_date: null,
+    };
+    mocks.api.mockImplementation(async (endpoint: string) => {
+      if (endpoint === "/api/projects/1/") {
+        return {
+          id: 1,
+          organization: 2,
+          name: "Roadmap",
+          description: "",
+          status: "ACTIVE",
+          created_by: 1,
+        };
+      }
+      if (endpoint === "/api/organizations/") {
+        return [{ id: 2, name: "Acme", role: "MEMBER" }];
+      }
+      if (endpoint === "/api/organizations/2/members/") return [];
+      if (endpoint === "/api/tasks/?project=1") {
+        return { next: "/api/tasks/?project=1&page=2", results: [] };
+      }
+      if (endpoint === "/api/tasks/?project=1&page=2") {
+        return { next: null, results: [pageTwoTask] };
+      }
+      throw new Error(`Unexpected API call: ${endpoint}`);
+    });
+    renderProjectPage();
+
+    expect(await screen.findByText("Task from page two")).toBeInTheDocument();
   });
 
   it("applies combined filters from the URL when loading the board", async () => {
@@ -846,9 +989,7 @@ describe("frontend user flows", () => {
     fireEvent.click(screen.getByRole("button", { name: "Send invitation" }));
 
     expect(
-      await screen.findByText(
-        "Invitation sent to new@example.com. They can register to join.",
-      ),
+      await screen.findByText("Invitation sent to new@example.com."),
     ).toBeInTheDocument();
     expect(email).toHaveValue("");
     expect(mocks.api).toHaveBeenCalledWith(
@@ -1028,6 +1169,15 @@ describe("frontend user flows", () => {
             verb: "comment_added",
             message: "Avery commented on a task.",
             created_at: "2026-10-02T10:00:00Z",
+            actor_name: "Fiza Saeed",
+          },
+          {
+            id: 5,
+            task: null,
+            verb: "task_created",
+            message: "Someone created a task.",
+            created_at: "2026-10-02T10:00:00Z",
+            actor_name: "",
           },
         ];
       }
@@ -1043,6 +1193,8 @@ describe("frontend user flows", () => {
       "/tasks/42",
     );
     expect(screen.getByText("Overdue")).toBeInTheDocument();
+    expect(await screen.findByText("FS")).toBeInTheDocument();
+    expect(screen.getByText("?")).toBeInTheDocument();
   });
 
   it("requires confirmation before removing an organization member", async () => {
@@ -1130,6 +1282,11 @@ describe("frontend user flows", () => {
     expect(
       await screen.findByRole("heading", { name: "Comments" }),
     ).toBeInTheDocument();
+    const activitySummary = screen
+      .getByText("Activity history")
+      .closest("summary");
+    expect(activitySummary?.querySelector("svg")).not.toBeNull();
+    expect(activitySummary?.textContent).not.toContain("\u2304");
     expect(
       screen.queryByRole("button", { name: "Edit task" }),
     ).not.toBeInTheDocument();
@@ -1267,5 +1424,226 @@ describe("frontend user flows", () => {
     expect(
       screen.getByRole("button", { name: "Notifications" }),
     ).toBeInTheDocument();
+  });
+
+  // ── Part B: login and registration error messages ─────────────────────────
+
+  it("shows 'Email or password is wrong.' on a failed login and stays on the page", async () => {
+    mocks.api.mockRejectedValue(
+      new ApiError(
+        "AUTH_FAILED",
+        "No active account found with the given credentials.",
+        401,
+      ),
+    );
+    render(<Login />);
+
+    fireEvent.change(screen.getByPlaceholderText("Email"), {
+      target: { value: "x@example.com" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("Password"), {
+      target: { value: "wrong" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Log in" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Email or password is wrong.",
+    );
+    // No navigation.
+    expect(mocks.push).not.toHaveBeenCalled();
+  });
+
+  it("shows the throttle message on a 429 from the login endpoint", async () => {
+    mocks.api.mockRejectedValue(
+      new ApiError("THROTTLED", "Request was throttled.", 429),
+    );
+    render(<Login />);
+
+    fireEvent.change(screen.getByPlaceholderText("Email"), {
+      target: { value: "x@example.com" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("Password"), {
+      target: { value: "StrongPass!234" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Log in" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Too many attempts. Please wait a minute and try again.",
+    );
+    expect(mocks.push).not.toHaveBeenCalled();
+  });
+
+  it("shows an invite error above the submit button with the owner hint", async () => {
+    mocks.api.mockRejectedValue(
+      new ApiError("VALIDATION_ERROR", "Validation failed.", 400, {
+        invite: ["This invitation has already been used."],
+      }),
+    );
+    render(<RegisterForm />);
+
+    fireEvent.change(screen.getByPlaceholderText("Email"), {
+      target: { value: "new@example.com" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("Password"), {
+      target: { value: "StrongPass!234" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("This invitation has already been used.");
+    expect(alert).toHaveTextContent(
+      "Ask the organization owner to send you a new invitation.",
+    );
+    // Must be before the submit button in the DOM.
+    const button = screen.getByRole("button", { name: "Create account" });
+    expect(
+      alert.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("redirects to /login when registration succeeds but automatic login fails", async () => {
+    mocks.api
+      .mockResolvedValueOnce({
+        id: 99,
+        email: "brand-new@example.com",
+        organization_id: null,
+      }) // register
+      .mockRejectedValueOnce(
+        new ApiError("THROTTLED", "Request was throttled.", 429),
+      ); // login throttled
+
+    render(<RegisterForm />);
+
+    fireEvent.change(screen.getByPlaceholderText("Email"), {
+      target: { value: "brand-new@example.com" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("Password"), {
+      target: { value: "StrongPass!234" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+
+    await waitFor(() =>
+      expect(mocks.push).toHaveBeenCalledWith("/login?registered=1"),
+    );
+  });
+
+  // ── Part B invite link copy button ────────────────────────────────────────
+
+  it("shows the copy invite link button for a pending invitation and copies on click", async () => {
+    const inviteUrl = "http://localhost:3000/register?invite=tok123";
+    mocks.api.mockImplementation(
+      async (endpoint: string, init?: RequestInit & { json?: unknown }) => {
+        if (endpoint === "/api/organizations/") {
+          return [{ id: 2, name: "Acme", role: "OWNER" }];
+        }
+        if (endpoint === "/api/organizations/2/members/") {
+          if (init?.method === "POST")
+            return {
+              email: "new@example.com",
+              role: "MEMBER",
+              pending: true,
+              invite_url: inviteUrl,
+              expires_at: "2026-11-01T00:00:00Z",
+            };
+          return [];
+        }
+        if (endpoint === "/api/dashboard/") return {};
+        if (endpoint === "/api/projects/?ordering=-created_at")
+          return { results: [] };
+        if (endpoint === "/api/activity/") return [];
+        throw new Error(`Unexpected: ${endpoint}`);
+      },
+    );
+
+    const writtenText: string[] = [];
+    vi.stubGlobal("navigator", {
+      clipboard: {
+        writeText: async (text: string) => {
+          writtenText.push(text);
+        },
+      },
+    });
+
+    renderDashboard();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Invite member" }),
+    );
+    fireEvent.change(await screen.findByPlaceholderText("Member email"), {
+      target: { value: "new@example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send invitation" }));
+
+    const copyBtn = await screen.findByRole("button", {
+      name: "Copy invite link",
+    });
+    fireEvent.click(copyBtn);
+
+    await waitFor(() => expect(writtenText).toContain(inviteUrl));
+    expect(
+      await screen.findByRole("button", { name: "Copied!" }),
+    ).toBeInTheDocument();
+  });
+
+  it("shows no copy link button when a registered user is added directly", async () => {
+    mocks.api.mockImplementation(
+      async (endpoint: string, init?: RequestInit & { json?: unknown }) => {
+        if (endpoint === "/api/organizations/") {
+          return [{ id: 2, name: "Acme", role: "OWNER" }];
+        }
+        if (endpoint === "/api/organizations/2/members/") {
+          if (init?.method === "POST")
+            return {
+              id: 7,
+              user_id: 5,
+              email: "existing@example.com",
+              name: "Existing",
+              role: "MEMBER",
+              pending: false,
+            };
+          return [];
+        }
+        if (endpoint === "/api/dashboard/") return {};
+        if (endpoint === "/api/projects/?ordering=-created_at")
+          return { results: [] };
+        if (endpoint === "/api/activity/") return [];
+        throw new Error(`Unexpected: ${endpoint}`);
+      },
+    );
+
+    renderDashboard();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Invite member" }),
+    );
+    fireEvent.change(await screen.findByPlaceholderText("Member email"), {
+      target: { value: "existing@example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send invitation" }));
+
+    await screen.findByRole("status");
+    expect(
+      screen.queryByRole("button", { name: "Copy invite link" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("register with invite token activates the returned organization", async () => {
+    mocks.api
+      .mockResolvedValueOnce({
+        id: 99,
+        email: "joiner@example.com",
+        organization_id: 7,
+      }) // register
+      .mockResolvedValueOnce({ access: "tok", refresh: "ref" }); // login
+
+    render(<RegisterForm invitation="mytoken" />);
+    fireEvent.change(screen.getByPlaceholderText("Email"), {
+      target: { value: "joiner@example.com" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("Password"), {
+      target: { value: "StrongPass!234" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+
+    await waitFor(() => expect(mocks.push).toHaveBeenCalledWith("/dashboard"));
+    expect(localStorage.getItem("org")).toBe("7");
   });
 });

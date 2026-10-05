@@ -43,7 +43,19 @@ The supported local installation path runs the complete stack with Docker Compos
    Copy-Item .env.example .env
    ```
 
-   `DJANGO_SECRET_KEY` is required and must contain at least 32 characters. Replace the example with a unique random value (50+ characters recommended), and set a strong PostgreSQL password. Do not commit `.env`.
+   Before the first `docker compose up --build`, replace the placeholder `DJANGO_SECRET_KEY` in `.env`. With `DJANGO_DEBUG=0`, the placeholder is rejected when the backend starts. The key must be unique, at least 50 characters, and contain no placeholder text. Generate one with Docker, so local Python is not required:
+
+   ```powershell
+   docker compose run --rm --no-deps backend python -c "import secrets; print(secrets.token_urlsafe(64))"
+   ```
+
+   Copy the generated value into `.env` as `DJANGO_SECRET_KEY`, set a strong PostgreSQL password, and do not commit `.env`. If startup reports:
+
+   ```text
+   ImproperlyConfigured: DJANGO_SECRET_KEY must not contain a placeholder outside debug mode.
+   ```
+
+   replace the placeholder value in `.env` with a generated key, then run `docker compose up --build -d` again.
 
 2. Build and start all services in the background:
 
@@ -51,7 +63,9 @@ The supported local installation path runs the complete stack with Docker Compos
    docker compose up --build -d
    ```
 
-   Compose waits for PostgreSQL and Redis healthchecks before starting the API, Celery worker, or Beat. PostgreSQL health is checked with the configured `POSTGRES_USER` and `POSTGRES_DB`; Redis health is checked with `redis-cli ping`. The backend applies committed database migrations and collects static assets before starting the ASGI server. Swagger UI assets are served locally through WhiteNoise and drf-spectacular-sidecar rather than loaded from a CDN.
+   Compose builds the frontend as a Next.js production image (`next build` during image creation and `next start` at runtime). It waits for PostgreSQL and Redis healthchecks before starting the API, Celery worker, or Beat. PostgreSQL health is checked with the configured `POSTGRES_USER` and `POSTGRES_DB`; Redis health is checked with `redis-cli ping`. The backend applies committed database migrations and collects static assets before starting the ASGI server. Swagger UI assets are served locally through WhiteNoise and drf-spectacular-sidecar rather than loaded from a CDN.
+
+   `NEXT_PUBLIC_API_URL` is embedded in the frontend image at build time and configures both browser REST requests and the notifications WebSocket URL. Rebuild with `docker compose up --build` after changing any `NEXT_PUBLIC_*` value. The image keeps its development tools installed, so `docker compose exec frontend npm test`, `docker compose exec frontend npm run lint`, and `docker compose exec frontend npm run format:check` remain available while the production server runs.
 
    Check startup status with:
 
@@ -70,7 +84,11 @@ Stop services with `docker compose down`. Database data is stored in the named `
 
 ### Environment configuration
 
-`.env.example` documents the supported variables: PostgreSQL database/user/password/host, required `DJANGO_SECRET_KEY` (at least 32 characters), `DJANGO_DEBUG`, allowed hosts, Redis URL, JWT access/refresh lifetimes, email backend/from address, frontend URL, CORS origins, and the public frontend API URL. Local email defaults to Django's console backend. Use a real mail backend and tightly scoped host/CORS settings outside local development.
+`.env.example` documents the supported variables: PostgreSQL database/user/password/host, required `DJANGO_SECRET_KEY` (at least 50 characters without placeholder text outside debug mode), `DJANGO_DEBUG`, allowed hosts, Redis URL, JWT access/refresh lifetimes, email backend/from address, frontend URL, CORS origins, and the public frontend API URL. Local email defaults to Django's console backend. Use a real mail backend and tightly scoped host/CORS settings outside local development.
+
+### Backend dependencies
+
+The backend uses Django 5.2, a long-term support (LTS) release. `backend/requirements.txt` contains runtime dependencies only. `backend/requirements-dev.txt` includes those runtime dependencies plus pytest, coverage, lint, and formatting tools. Docker Compose builds the backend, Celery worker, and Celery Beat with `INSTALL_DEV=true` by default so development and verification tools are available in each service container. Set the Docker build argument `INSTALL_DEV=false` when building a runtime-only image; the Dockerfile then installs only `requirements.txt`.
 
 ## Backend structure and API
 
@@ -113,6 +131,7 @@ Tasks can also be filtered by `project`; project lists support `status` and `org
 - The frontend stores the tokens in browser `localStorage` and refreshes after a 401. Refresh rotation is enabled and the replaced refresh token is blacklisted.
 - Logout blacklists the submitted refresh token. Password changes validate the new password with Django's configured validators, reject reusing the current password, blacklist all existing refresh tokens, and return a new token pair for the active session.
 - Authenticated users can change their own password or email at `/api/auth/password/change/` and `/api/auth/email/change/`, regardless of organization role. Email changes require the current password, use case-insensitive uniqueness, and send a notice to the previous email address. `/api/auth/me/` only allows first-name edits.
+- Account emails are stripped and lowercased on registration and email changes. Login and password-reset lookup accept different casing, and a database constraint prevents duplicate accounts regardless of email casing.
 - Login, register, refresh, logout, password change, email change, forgot-password, and reset-password endpoints use the `auth` throttle scope (10 requests/minute by default). Forgot-password responses do not reveal whether an email address exists.
 - WebSocket authentication sends the access token as a `jwt.<token>` WebSocket subprotocol (alongside the `tasklane` protocol), not in the URL query string.
 
@@ -170,13 +189,35 @@ Roles are ordered `OWNER > ADMIN > MEMBER > VIEWER`. The API independently enfor
 
 No role can change or remove their own membership. Comment authors can edit/delete their own comments; OWNER/ADMIN can moderate comment deletion. Account email and password changes are account-level operations available to any authenticated user, regardless of organization role. The frontend hides controls according to role, but authorization is enforced by the API.
 
-Security notes: use a unique, at least 32-character `DJANGO_SECRET_KEY`; do not commit `.env`; restrict `ALLOWED_HOSTS` and CORS origins; use TLS and production-grade secret storage in deployment; keep authentication throttling enabled; and use HTTPS/WSS in production. `localStorage` tokens are readable by JavaScript, so protect the frontend against cross-site scripting and plan the documented `httpOnly` cookie migration.
+Security notes: use a unique `DJANGO_SECRET_KEY` of at least 50 characters without placeholder text outside debug mode; do not commit `.env`; restrict `ALLOWED_HOSTS` and CORS origins; use TLS and production-grade secret storage in deployment; keep authentication throttling enabled; and use HTTPS/WSS in production. `localStorage` tokens are readable by JavaScript, so protect the frontend against cross-site scripting and plan the documented `httpOnly` cookie migration.
+
+### Rate limiting
+
+Every unauthenticated auth endpoint has its own throttle scope so that a burst on one path (e.g. many token refreshes) cannot lock users out of another (e.g. login). Authenticated account-mutation endpoints share a separate scope.
+
+| Scope | Endpoints | Default | Environment variable |
+| --- | --- | --- | --- |
+| `auth_login` | `POST /api/auth/login/` | 10/min | `THROTTLE_LOGIN` |
+| `auth_register` | `POST /api/auth/register/` | 10/min | `THROTTLE_REGISTER` |
+| `auth_refresh` | `POST /api/auth/refresh/` | 60/min | `THROTTLE_REFRESH` |
+| `auth_password` | `POST /api/auth/password/forgot/`, `POST /api/auth/password/reset/` | 5/min | `THROTTLE_PASSWORD` |
+| `auth_account` | `POST /api/auth/password/change/`, `POST /api/auth/email/change/`, `POST /api/auth/logout/` | 10/min | `THROTTLE_ACCOUNT` |
+
+All limits are per IP address. A 429 response uses the standard error envelope with `"code": "THROTTLED"` and a `Retry-After` header.
+
+**Shared counters:** throttle counters are stored in Redis database 1 (derived from `REDIS_URL` by replacing the database path with `/1`) so all ASGI worker processes share the same counts and a single process restart does not reset them. Reset counters in development with:
+
+```powershell
+docker compose exec redis redis-cli -n 1 flushdb
+```
+
+**Reverse proxy:** if the application runs behind a load balancer or reverse proxy, configure `NUM_PROXIES` in Django settings so throttle limits apply against the real client IP from `X-Forwarded-For` rather than the proxy address. Without this, all users behind the same proxy share one counter.
 
 ### Organization invitations
 
 Organization members are managed from the dashboard for the selected organization. OWNER and ADMIN can invite a registered account directly as MEMBER or VIEWER; only OWNER may invite or promote an ADMIN. An invitee who already has an account is added immediately. An unregistered email receives a seven-day pending invitation and a Celery-delivered registration link at `/register?invite=<token>`. Pending invitations are unique per organization and case-insensitive email.
 
-Registration validates a supplied invitation token against the registering email. Registration without a token and successful login also accept active pending invitations for that email, so an invitee who opens the ordinary registration page or already has an account still joins the organization. Acceptance creates the membership with the invited role and marks the invitation used. Expired, unknown, email-mismatched, and already-used tokens are rejected. The resulting membership appears in that user's organization dropdown; role-based controls are hidden in the UI and remain protected by API authorization.
+Registration validates a supplied invitation token against the registering email case-insensitively. An invitation is accepted only by registering through the emailed `/register?invite=<token>` link with the invited email. Registering or logging in without the token never joins an organization, because email ownership is not otherwise verified. Acceptance creates the membership with the invited role and marks the invitation used. Expired, unknown, email-mismatched, and already-used tokens are rejected. The resulting membership appears in that user's organization dropdown; role-based controls are hidden in the UI and remain protected by API authorization.
 
 Member role changes and removals use `PATCH` and `DELETE` on `/api/organizations/{id}/members/{member_id}/`. These operations resolve the member inside the caller's organization, returning 404 for cross-organization IDs. The API schema documents their path IDs, JWT authentication, request body, success responses, and standard error envelope.
 
@@ -241,6 +282,106 @@ sequenceDiagram
 Celery Beat schedules `apps.tasks.jobs.flag_overdue_tasks` once per hour. The job selects tasks whose due date is before the local date, excludes `DONE` tasks, and checks `overdue_notified_at IS NULL`. It locks task rows in a transaction and rechecks the null condition in the update before setting the timestamp and writing one activity entry. Later runs skip already-marked tasks, preventing repeat flags and notifications. Overdue WebSocket notifications go to assigned users after commit; the overdue job does not send email.
 
 The Channels consumer is exposed at `/ws/notifications/?organization_id=<id>`. It validates the JWT and organization membership at connection time, sends organization events only to organization members, sends assignment notifications only to the assigned user, and rechecks membership/token expiry before delivering an event. Notifications cover task assignment, new comments, and status changes. The frontend notification navbar reconnects as the session or active organization changes.
+
+## Demo data and housekeeping
+
+### Seed demo data
+
+Populate a local environment with a complete demo organization, users, projects, tasks, comments, and activity entries generated through the same service layer used in production:
+
+```powershell
+docker compose exec backend python manage.py seed_demo
+```
+
+This creates the following accounts (password `DemoPass!234`):
+
+| Email | Display name | Role in Demo Org |
+| --- | --- | --- |
+| `owner@demo.test` | Demo Owner | Owner |
+| `admin@demo.test` | Demo Admin | Admin |
+| `member@demo.test` | Demo Member | Member |
+| `viewer@demo.test` | Demo Viewer | Viewer |
+| `outsider@demo.test` | Demo Outsider | Owner of Other Org (not in Demo Org) |
+
+Use `--password <value>` to change the password. Use `--force` to run against a non-debug environment (not recommended in production). The command is idempotent: running it twice does not create duplicates.
+
+### Housekeeping: prune stale data
+
+Remove accepted or expired `PendingInvitation` rows that are older than 30 days. Default is a **dry run** — nothing is deleted unless `--yes` is provided:
+
+```powershell
+# Show what would be deleted (dry run)
+docker compose exec backend python manage.py prune_stale_data
+
+# Delete stale invitations
+docker compose exec backend python manage.py prune_stale_data --yes
+
+# Also delete eligible orphaned user accounts
+docker compose exec backend python manage.py prune_stale_data --yes --users
+```
+
+The `--users` flag additionally lists or deletes accounts that have no organization membership, were created more than `--days` days ago (default 30), are not staff or superusers, and have not authored any task, comment, or activity entry. It never deletes a user who owns an organization, created a task, sent an invitation, or would cascade into other people's data.
+
+> **Note:** User accounts are **never deleted automatically** (no signals, no scheduled job). Users may belong to zero organizations legitimately — for example, an account that was created but not yet added to any workspace. Automatic deletion is opt-in only through `prune_stale_data --yes --users`. Accepted and expired `PendingInvitation` rows are pruned daily by the `prune-stale-invitations` Celery Beat task (they are not domain data and do not cascade into user records).
+
+## Email setup
+
+### Console mode (default)
+
+By default all outgoing email is printed to the Docker log instead of being delivered. This is convenient for local development — you can read invitation links and password-reset links with:
+
+```powershell
+docker compose logs backend | Select-String "register\?invite"
+```
+
+### Real SMTP
+
+Set the following variables in `.env` (see `.env.example` for a Gmail app-password example):
+
+```env
+EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
+EMAIL_HOST=smtp.gmail.com
+EMAIL_PORT=587
+EMAIL_HOST_USER=youraddress@gmail.com
+EMAIL_HOST_PASSWORD=your-16-char-app-password
+EMAIL_USE_TLS=1
+```
+
+`EMAIL_HOST_PASSWORD` is never logged or included in error responses. Restart the backend after changing `.env`:
+
+```powershell
+docker compose up --build -d
+```
+
+### Optional: Mailpit local mail-catcher
+
+Mailpit captures outgoing email and provides a web UI. It requires no account and shows rendered HTML email. Start it with the `dev-mail` Docker Compose profile:
+
+```powershell
+docker compose --profile dev-mail up -d
+```
+
+Then add to `.env`:
+
+```env
+EMAIL_HOST=mailpit
+EMAIL_PORT=1025
+EMAIL_USE_TLS=0
+```
+
+Open <http://localhost:8025> to browse captured emails. The normal `docker compose up --build` is **unchanged** — Mailpit only starts when the profile is explicitly requested.
+
+### Invitation flow
+
+When an OWNER or ADMIN invites an unregistered email address, Tasklane:
+
+1. Creates a single-use `PendingInvitation` with a random token valid for seven days.
+2. Queues a Celery task that emails the link `{FRONTEND_URL}/register?invite=<token>` to the invited address. If delivery fails the task retries up to three times with exponential backoff.
+3. Returns `invite_url` and `expires_at` in the API response so the inviter can copy and share the link manually using the **Copy invite link** button on the dashboard.
+
+**The invite link is the only way an unregistered email address joins an organization.** Registering or logging in without the link never grants organization membership, because email ownership is not otherwise verified.
+
+When the invited person clicks the link and completes registration, the invitation is marked used, a membership row is created with the invited role, and the browser is taken directly to the invited organization's dashboard.
 
 ## Tests and linters
 

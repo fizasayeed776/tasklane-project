@@ -31,6 +31,7 @@ type TaskActivity = {
   verb: string;
   message: string;
   created_at: string;
+  actor_name: string;
 };
 
 type TaskUpdate = Partial<
@@ -47,13 +48,6 @@ function statusLabel(status: string) {
         .toLowerCase()
         .replaceAll("_", " ")
         .replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
-
-function activityGlyph(verb: string) {
-  if (verb.includes("assigned")) return "↗";
-  if (verb.includes("status")) return "↻";
-  if (verb.includes("comment")) return "“";
-  return "＋";
 }
 
 function formattedDate(value?: string | null) {
@@ -463,12 +457,19 @@ export default function TaskClient({ id }: { id: string }) {
           <details className="panel group">
             <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent">
               Activity history
-              <span
+              <svg
                 aria-hidden="true"
-                className="text-sm text-muted transition-transform group-open:rotate-180"
+                focusable="false"
+                className="size-4 text-muted transition-transform group-open:rotate-180"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
               >
-                ⌄
-              </span>
+                <path d="M4 6l4 4 4-4" />
+              </svg>
             </summary>
             <ul className="mt-4 space-y-4 border-t border-line pt-4">
               {activityList.map((item) => (
@@ -477,7 +478,7 @@ export default function TaskClient({ id }: { id: string }) {
                     aria-hidden="true"
                     className="grid size-8 shrink-0 place-items-center rounded-full bg-accent-soft text-accent"
                   >
-                    {activityGlyph(item.verb)}
+                    {initials(item.actor_name || "")}
                   </span>
                   <div>
                     <p>{item.message}</p>

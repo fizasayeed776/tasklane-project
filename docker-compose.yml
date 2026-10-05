@@ -1,5 +1,8 @@
 x-backend: &backend
-  build: ./backend
+  build:
+    context: ./backend
+    args:
+      INSTALL_DEV: "true"
   env_file: .env
   volumes: ["./backend:/app"]
   depends_on:
@@ -37,9 +40,25 @@ services:
     <<: *backend
     command: celery -A config beat -l info
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
     env_file: .env
     ports: ["3000:3000"]
     depends_on: [backend]
+  # Optional local mail-catcher. Start with:
+  #   docker compose --profile dev-mail up -d
+  # Then open http://localhost:8025 to browse captured emails.
+  # Add to .env:
+  #   EMAIL_HOST=mailpit
+  #   EMAIL_PORT=1025
+  #   EMAIL_USE_TLS=0
+  mailpit:
+    image: axllent/mailpit:latest
+    profiles: ["dev-mail"]
+    ports:
+      - "8025:8025"  # web UI
+      - "1025:1025"  # SMTP
 volumes:
   pgdata:

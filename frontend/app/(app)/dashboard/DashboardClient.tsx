@@ -11,6 +11,7 @@ import {
   api,
   canManage,
   errorMessage,
+  fetchAllPages,
   Org,
   OrgMember,
   Project,
@@ -27,47 +28,26 @@ type CurrentUser = {
   display_name?: string;
 };
 
-type ProjectTaskPage = {
-  count: number;
-  next: string | null;
-  results: { updated_at: string; created_at: string }[];
-};
-
 async function projectTaskSummary(projectId: number) {
-  let nextPath: string | null = `/api/tasks/?project=${projectId}`;
   let count = 0;
+  const tasks = await fetchAllPages<{
+    updated_at: string;
+    created_at: string;
+  }>(`/api/tasks/?project=${projectId}`, (page) => {
+    count = page.count ?? count;
+  });
   let latestTaskChange: string | undefined;
-  while (nextPath) {
-    const response: ProjectTaskPage = await api<ProjectTaskPage>(nextPath);
-    count = response.count;
-    for (const task of response.results) {
-      const changed = task.updated_at || task.created_at;
-      if (
-        changed &&
-        (!latestTaskChange ||
-          new Date(changed).getTime() > new Date(latestTaskChange).getTime())
-      ) {
-        latestTaskChange = changed;
-      }
-    }
-    if (response.next) {
-      const url = new URL(
-        response.next,
-        process.env.NEXT_PUBLIC_API_URL ?? window.location.origin,
-      );
-      nextPath = `${url.pathname}${url.search}`;
-    } else {
-      nextPath = null;
+  for (const task of tasks) {
+    const changed = task.updated_at || task.created_at;
+    if (
+      changed &&
+      (!latestTaskChange ||
+        new Date(changed).getTime() > new Date(latestTaskChange).getTime())
+    ) {
+      latestTaskChange = changed;
     }
   }
   return { count, latestTaskChange };
-}
-
-function activityGlyph(verb: string) {
-  if (verb.includes("assigned")) return "Γåù";
-  if (verb.includes("status")) return "Γå╗";
-  if (verb.includes("comment")) return "\u201c";
-  return "∩╝ï";
 }
 
 export default function Dashboard() {
@@ -80,7 +60,10 @@ export default function Dashboard() {
     [inviteRole, setInviteRole] = useState<"ADMIN" | "MEMBER" | "VIEWER">(
       "MEMBER",
     ),
-    [memberFeedback, setMemberFeedback] = useState("");
+    [memberFeedback, setMemberFeedback] = useState(""),
+    [inviteLink, setInviteLink] = useState<string | null>(null),
+    [inviteLinkExpiry, setInviteLinkExpiry] = useState<string | null>(null),
+    [copied, setCopied] = useState(false);
   const [projectModalOpen, setProjectModalOpen] = useState(false);
   const [invitePanelOpen, setInvitePanelOpen] = useState(false);
   const [memberPendingRemoval, setMemberPendingRemoval] =
@@ -201,18 +184,23 @@ export default function Dashboard() {
   });
   const inviteMember = useMutation({
     mutationFn: () =>
-      api<{ email: string; pending: boolean }>(
-        `/api/organizations/${org}/members/`,
-        {
-          method: "POST",
-          json: { email: inviteEmail, role: inviteRole },
-        },
-      ),
+      api<{
+        email: string;
+        pending: boolean;
+        invite_url?: string;
+        expires_at?: string;
+      }>(`/api/organizations/${org}/members/`, {
+        method: "POST",
+        json: { email: inviteEmail, role: inviteRole },
+      }),
     onSuccess: async (result) => {
       setInviteEmail("");
+      setInviteLink(result.invite_url ?? null);
+      setInviteLinkExpiry(result.expires_at ?? null);
+      setCopied(false);
       setMemberFeedback(
         result.pending
-          ? `Invitation sent to ${result.email}. They can register to join.`
+          ? `Invitation sent to ${result.email}.`
           : `${result.email} was added to this organization.`,
       );
       await qc.invalidateQueries({ queryKey: ["members", org] });
@@ -471,7 +459,7 @@ export default function Dashboard() {
                   aria-hidden="true"
                   className="grid size-8 shrink-0 place-items-center rounded-full bg-accent-soft text-accent"
                 >
-                  {activityGlyph(item.verb)}
+                  {initials(item.actor_name || "")}
                 </span>
                 <div className="min-w-0">
                   <p className="leading-5">{item.message}</p>
@@ -611,6 +599,8 @@ export default function Dashboard() {
                   onSubmit={(event) => {
                     event.preventDefault();
                     setMemberFeedback("");
+                    setInviteLink(null);
+                    setCopied(false);
                     inviteMember.mutate();
                   }}
                 >
@@ -658,9 +648,61 @@ export default function Dashboard() {
             </div>
           )}
           {memberFeedback && (
-            <p role="status" className="text-sm text-green-700">
-              {memberFeedback}
-            </p>
+            <div className="mt-2 space-y-2">
+              <p role="status" className="text-sm text-green-700">
+                {memberFeedback}
+              </p>
+              {inviteLink && (
+                <div className="rounded-md border border-line bg-surface p-3 text-sm">
+                  <p className="font-medium">Share this invite link</p>
+                  <p className="mt-0.5 text-xs text-muted">
+                    The link works once and expires on{" "}
+                    {inviteLinkExpiry
+                      ? new Date(inviteLinkExpiry).toLocaleDateString()
+                      : "the expiry date"}
+                    .
+                  </p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <input
+                      readOnly
+                      aria-label="Invite link"
+                      className="input flex-1 text-xs"
+                      value={inviteLink}
+                    />
+                    <button
+                      type="button"
+                      className="btn shrink-0 whitespace-nowrap text-sm"
+                      onClick={() => {
+                        if (navigator.clipboard) {
+                          navigator.clipboard
+                            .writeText(inviteLink)
+                            .then(() => {
+                              setCopied(true);
+                              setTimeout(() => setCopied(false), 2000);
+                            })
+                            .catch(() => {});
+                        } else {
+                          // Fallback for environments without Clipboard API.
+                          const ta = document.createElement("textarea");
+                          ta.value = inviteLink;
+                          ta.style.position = "fixed";
+                          ta.style.opacity = "0";
+                          document.body.appendChild(ta);
+                          ta.focus();
+                          ta.select();
+                          document.execCommand("copy");
+                          document.body.removeChild(ta);
+                          setCopied(true);
+                          setTimeout(() => setCopied(false), 2000);
+                        }
+                      }}
+                    >
+                      {copied ? "Copied!" : "Copy invite link"}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           )}
           {(changeMemberRole.isError || removeMember.isError) && (
             <p role="alert" className="text-sm text-warn">
@@ -710,8 +752,7 @@ export default function Dashboard() {
           )}
         </section>
       )}
-
-      {/* ΓöÇΓöÇ New project dialog ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */}
+      {/* New project dialog */}
       {projectModalOpen && (
         <AccessibleDialog
           labelledBy="new-project-title"
@@ -761,8 +802,7 @@ export default function Dashboard() {
           </form>
         </AccessibleDialog>
       )}
-
-      {/* ΓöÇΓöÇ Remove member confirmation ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */}
+      {/* Remove member confirmation */}
       {memberPendingRemoval && (
         <AccessibleDialog
           labelledBy="remove-member-title"
@@ -795,8 +835,7 @@ export default function Dashboard() {
           </div>
         </AccessibleDialog>
       )}
-
-      {/* ΓöÇΓöÇ Transfer ownership confirmation ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */}
+      {/* Transfer ownership confirmation */}
       {transferTarget && (
         <AccessibleDialog
           labelledBy="transfer-ownership-title"
@@ -833,8 +872,7 @@ export default function Dashboard() {
           </div>
         </AccessibleDialog>
       )}
-
-      {/* ΓöÇΓöÇ Leave organization confirmation ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */}
+      {/* Leave organization confirmation */}
       {leaveConfirmOpen && (
         <AccessibleDialog
           labelledBy="leave-org-title"
@@ -868,8 +906,7 @@ export default function Dashboard() {
           </div>
         </AccessibleDialog>
       )}
-
-      {/* ΓöÇΓöÇ Delete organization confirmation ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */}
+      {/* Delete organization confirmation */}
       {deleteConfirmOpen && (
         <AccessibleDialog
           labelledBy="delete-org-title"

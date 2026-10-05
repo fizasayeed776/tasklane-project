@@ -2,6 +2,9 @@
 
 from datetime import date, timedelta
 
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
+
 import pytest
 from rest_framework.test import APIClient
 
@@ -10,6 +13,7 @@ from apps.organizations.models import OrganizationMember
 from apps.organizations.services import create_organization
 from apps.projects.models import Project
 from apps.tasks.models import Activity, Comment, Task
+from apps.tasks.serializers import ActivitySerializer
 
 
 def as_user(u):
@@ -172,12 +176,19 @@ def test_comment_owner_can_edit_and_admin_can_moderate(world):
     comment_id = response.json()["id"]
     assert Comment.objects.get(pk=comment_id).user_id == author.id
 
-    assert (
-        author_client.patch(
-            f"/api/comments/{comment_id}/", {"content": "Edited"}
-        ).status_code
-        == 200
+    response = author_client.patch(f"/api/comments/{comment_id}/", {})
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "INVALID"
+
+    response = author_client.patch(f"/api/comments/{comment_id}/", {"content": "  "})
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "INVALID"
+
+    response = author_client.patch(
+        f"/api/comments/{comment_id}/", {"content": "Edited"}
     )
+    assert response.status_code == 200
+    assert response.json()["content"] == "Edited"
     assert (
         as_user(world["a"])
         .patch(f"/api/comments/{comment_id}/", {"content": "Not yours"})
@@ -307,6 +318,61 @@ def test_user_can_only_read_activity_for_their_organizations(world):
     assert [item["message"] for item in response.json()] == ["Visible"]
 
 
+def test_activity_actor_name_in_dashboard_and_task_history(world):
+    actor = User.objects.create_user(
+        "actor@x.com", "Passw0rd!x", first_name="Actor Name"
+    )
+    task = Task.objects.create(
+        project=world["proj_a"], title="Activity task", created_by=world["a"]
+    )
+    activity = Activity.objects.create(
+        organization=world["org_a"],
+        task=task,
+        actor=actor,
+        verb="task_created",
+        message="Actor Name created a task.",
+    )
+    client = as_user(world["a"])
+
+    dashboard_item = client.get("/api/activity/").json()[0]
+    task_item = client.get(f"/api/tasks/{task.id}/activity/").json()[0]
+    assert dashboard_item["actor_name"] == "Actor Name"
+    assert task_item["actor_name"] == "Actor Name"
+
+    actor.delete()
+    deleted_actor_item = client.get(f"/api/tasks/{task.id}/activity/").json()[0]
+    assert deleted_actor_item["id"] == activity.id
+    assert deleted_actor_item["actor_name"] == ""
+
+
+def test_activity_feed_serialization_uses_one_query_for_many_actors(world):
+    actors = [
+        User.objects.create_user(f"actor{i}@x.com", "Passw0rd!x") for i in range(5)
+    ]
+    for actor in actors:
+        Activity.objects.create(
+            organization=world["org_a"],
+            actor=actor,
+            verb="task_created",
+            message="Created a task.",
+        )
+
+    queryset = Activity.objects.filter(organization=world["org_a"]).select_related(
+        "actor"
+    )
+    with CaptureQueriesContext(connection) as queries:
+        response = ActivitySerializer(queryset, many=True).data
+    assert len(response) == 5
+    assert len(queries) == 1
+
+
+def test_activity_schema_includes_actor_name(world):
+    response = as_user(world["a"]).get("/api/schema/", HTTP_ACCEPT="application/json")
+    assert response.status_code == 200
+    schema = response.json()
+    assert "actor_name" in str(schema["components"]["schemas"]["Activity"])
+
+
 @pytest.mark.django_db(transaction=True)
 def test_task_status_priority_assignment_logs_and_admin_delete(monkeypatch):
     owner = User.objects.create_user("owner@x.com", "Passw0rd!x")
@@ -359,6 +425,46 @@ def test_overdue_job_is_scheduled_hourly(settings):
     schedule = settings.CELERY_BEAT_SCHEDULE["overdue-check"]
     assert schedule["task"] == "apps.tasks.jobs.flag_overdue_tasks"
     assert schedule["schedule"] == 3600.0
+    assert settings.TIME_ZONE == "Asia/Karachi"
+    assert settings.CELERY_TIMEZONE == settings.TIME_ZONE
+    assert settings.USE_TZ is True
+
+
+@pytest.mark.django_db(transaction=True)
+def test_overdue_job_excludes_tasks_due_today_and_flags_yesterday(monkeypatch):
+    from apps.tasks.jobs import flag_overdue_tasks
+
+    today = date(2026, 10, 4)
+    monkeypatch.setattr("apps.tasks.jobs.timezone.localdate", lambda: today)
+
+    owner = User.objects.create_user("date-owner@example.com", "Passw0rd!x")
+    organization = create_organization(owner, "Local date overdue")
+    project = Project.objects.create(
+        organization=organization,
+        name="Local date project",
+        created_by=owner,
+    )
+    yesterday_task = Task.objects.create(
+        project=project,
+        title="Due yesterday",
+        created_by=owner,
+        due_date=today - timedelta(days=1),
+    )
+    today_task = Task.objects.create(
+        project=project,
+        title="Due today",
+        created_by=owner,
+        due_date=today,
+    )
+
+    assert flag_overdue_tasks.run() == 1
+
+    yesterday_task.refresh_from_db()
+    today_task.refresh_from_db()
+    assert yesterday_task.overdue_notified_at is not None
+    assert today_task.overdue_notified_at is None
+    assert Activity.objects.filter(task=yesterday_task, verb="task_overdue").exists()
+    assert not Activity.objects.filter(task=today_task, verb="task_overdue").exists()
 
 
 def test_task_comment_and_activity_reads_and_dashboard_statistics(world):

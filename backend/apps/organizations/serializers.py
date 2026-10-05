@@ -8,6 +8,7 @@ class ApiErrorDetailSerializer(serializers.Serializer):
     code = serializers.CharField()
     message = serializers.CharField()
     details = serializers.JSONField(required=False)
+    fields = serializers.JSONField(required=False)
 
 
 class ApiErrorSerializer(serializers.Serializer):
@@ -48,6 +49,9 @@ class InviteSerializer(serializers.Serializer):
         default="MEMBER",
     )
 
+    def validate_email(self, value):
+        return value.strip().lower()
+
 
 class MemberRoleSerializer(serializers.Serializer):
     role = serializers.ChoiceField(
@@ -75,6 +79,9 @@ class InviteResultSerializer(serializers.Serializer):
         ]
     )
     pending = serializers.BooleanField()
+    # Only present for pending (unregistered) invitations viewed by OWNER/ADMIN.
+    invite_url = serializers.CharField(required=False, allow_null=True)
+    expires_at = serializers.DateTimeField(required=False, allow_null=True)
 
 
 class TransferOwnershipSerializer(serializers.Serializer):

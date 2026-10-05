@@ -1,3 +1,5 @@
+import logging
+
 import pytest
 from django.test import Client, override_settings
 from rest_framework.exceptions import ValidationError
@@ -36,6 +38,7 @@ def test_validation_errors_include_first_readable_message_and_full_details(
             "code": "INVALID",
             "message": expected_message,
             "details": payload,
+            **({"fields": payload} if isinstance(payload, dict) else {}),
         },
     }
 
@@ -62,6 +65,23 @@ def test_forced_server_error_uses_standard_error_envelope():
         "success": False,
         "error": {"code": "SERVER_ERROR", "message": "Unexpected error."},
     }
+
+
+def test_unhandled_api_exception_is_logged_without_leaking_traceback(caplog):
+    request = APIRequestFactory().get("/api/forced-error/")
+    exception = RuntimeError("forced exception sentinel")
+
+    with caplog.at_level(logging.ERROR, logger="config.exceptions"):
+        try:
+            raise exception
+        except RuntimeError as exc:
+            response = handler(exc, {"request": request, "view": APIView()})
+
+    assert response.status_code == 500
+    assert "forced exception sentinel" in caplog.text
+    assert "Traceback" in caplog.text
+    assert "Traceback" not in str(response.data)
+    assert "forced exception sentinel" not in str(response.data)
 
 
 @pytest.mark.django_db
