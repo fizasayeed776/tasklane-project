@@ -181,5 +181,9 @@ CHANNEL_LAYERS = {
 }
 CELERY_TASK_ALWAYS_EAGER = not env("POSTGRES_HOST")
 CELERY_BEAT_SCHEDULE = {
-    "overdue-check": {"task": "apps.tasks.jobs.flag_overdue_tasks", "schedule": 3600.0}
+    "overdue-check": {"task": "apps.tasks.jobs.flag_overdue_tasks", "schedule": 3600.0},
+    "prune-stale-invitations": {
+        "task": "apps.organizations.jobs.prune_stale_invitations",
+        "schedule": 86400.0,  # once per day
+    },
 }

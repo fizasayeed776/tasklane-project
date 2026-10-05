@@ -3,6 +3,8 @@ from django.conf import settings
 from django.core.mail import send_mail
 from django.utils import timezone
 
+from . import jobs  # noqa: F401  — ensures prune_stale_invitations is registered
+
 
 @shared_task
 def send_invitation_email(invitation_id):
