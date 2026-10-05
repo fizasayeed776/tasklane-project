@@ -125,6 +125,16 @@ CORS_ALLOW_HEADERS = (*default_headers, "x-organization-id")
 FRONTEND_URL = env("FRONTEND_URL", "http://localhost:3000")
 EMAIL_BACKEND = env("EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend")
 DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", "noreply@pmp.local")
+# SMTP settings — only meaningful when EMAIL_BACKEND is the SMTP backend.
+# Leave unset in development to use the console backend above.
+EMAIL_HOST = env("EMAIL_HOST", "")
+EMAIL_PORT = int(env("EMAIL_PORT", "587"))
+EMAIL_HOST_USER = env("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", "")
+EMAIL_USE_TLS = env("EMAIL_USE_TLS", "1") == "1"
+EMAIL_USE_SSL = env("EMAIL_USE_SSL", "0") == "1"
+_email_timeout = env("EMAIL_TIMEOUT", "")
+EMAIL_TIMEOUT = int(_email_timeout) if _email_timeout else None
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "rest_framework_simplejwt.authentication.JWTAuthentication"

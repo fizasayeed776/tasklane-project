@@ -31,6 +31,8 @@ class RegisterSerializer(serializers.ModelSerializer):
     )
     password = serializers.CharField(write_only=True)
     invite = serializers.CharField(write_only=True, required=False)
+    # Returned after registration when an invitation was accepted.
+    organization_id = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -40,6 +42,7 @@ class RegisterSerializer(serializers.ModelSerializer):
             "first_name",
             "password",
             "invite",
+            "organization_id",
         ]  # explicit: no mass assignment of is_staff etc.
 
     def validate_email(self, value):
@@ -48,6 +51,9 @@ class RegisterSerializer(serializers.ModelSerializer):
     def validate_password(self, value):
         validate_password(value)
         return value
+
+    def get_organization_id(self, obj) -> int | None:
+        return getattr(obj, "_joined_organization_id", None)
 
 
 class ChangePasswordSerializer(serializers.Serializer):

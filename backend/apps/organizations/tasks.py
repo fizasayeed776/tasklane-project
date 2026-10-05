@@ -6,7 +6,7 @@ from django.utils import timezone
 from . import jobs  # noqa: F401  — ensures prune_stale_invitations is registered
 
 
-@shared_task
+@shared_task(autoretry_for=(Exception,), retry_backoff=True, max_retries=3)
 def send_invitation_email(invitation_id):
     from .models import PendingInvitation
 
