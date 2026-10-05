@@ -302,6 +302,65 @@ The `--users` flag additionally lists or deletes accounts that have no organizat
 
 > **Note:** User accounts are **never deleted automatically** (no signals, no scheduled job). Users may belong to zero organizations legitimately — for example, an account that was created but not yet added to any workspace. Automatic deletion is opt-in only through `prune_stale_data --yes --users`. Accepted and expired `PendingInvitation` rows are pruned daily by the `prune-stale-invitations` Celery Beat task (they are not domain data and do not cascade into user records).
 
+## Email setup
+
+### Console mode (default)
+
+By default all outgoing email is printed to the Docker log instead of being delivered. This is convenient for local development — you can read invitation links and password-reset links with:
+
+```powershell
+docker compose logs backend | Select-String "register\?invite"
+```
+
+### Real SMTP
+
+Set the following variables in `.env` (see `.env.example` for a Gmail app-password example):
+
+```env
+EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
+EMAIL_HOST=smtp.gmail.com
+EMAIL_PORT=587
+EMAIL_HOST_USER=youraddress@gmail.com
+EMAIL_HOST_PASSWORD=your-16-char-app-password
+EMAIL_USE_TLS=1
+```
+
+`EMAIL_HOST_PASSWORD` is never logged or included in error responses. Restart the backend after changing `.env`:
+
+```powershell
+docker compose up --build -d
+```
+
+### Optional: Mailpit local mail-catcher
+
+Mailpit captures outgoing email and provides a web UI. It requires no account and shows rendered HTML email. Start it with the `dev-mail` Docker Compose profile:
+
+```powershell
+docker compose --profile dev-mail up -d
+```
+
+Then add to `.env`:
+
+```env
+EMAIL_HOST=mailpit
+EMAIL_PORT=1025
+EMAIL_USE_TLS=0
+```
+
+Open <http://localhost:8025> to browse captured emails. The normal `docker compose up --build` is **unchanged** — Mailpit only starts when the profile is explicitly requested.
+
+### Invitation flow
+
+When an OWNER or ADMIN invites an unregistered email address, Tasklane:
+
+1. Creates a single-use `PendingInvitation` with a random token valid for seven days.
+2. Queues a Celery task that emails the link `{FRONTEND_URL}/register?invite=<token>` to the invited address. If delivery fails the task retries up to three times with exponential backoff.
+3. Returns `invite_url` and `expires_at` in the API response so the inviter can copy and share the link manually using the **Copy invite link** button on the dashboard.
+
+**The invite link is the only way an unregistered email address joins an organization.** Registering or logging in without the link never grants organization membership, because email ownership is not otherwise verified.
+
+When the invited person clicks the link and completes registration, the invitation is marked used, a membership row is created with the invited role, and the browser is taken directly to the invited organization's dashboard.
+
 ## Tests and linters
 
 Run backend checks in the Compose environment from the repository root:
