@@ -60,7 +60,10 @@ export default function Dashboard() {
     [inviteRole, setInviteRole] = useState<"ADMIN" | "MEMBER" | "VIEWER">(
       "MEMBER",
     ),
-    [memberFeedback, setMemberFeedback] = useState("");
+    [memberFeedback, setMemberFeedback] = useState(""),
+    [inviteLink, setInviteLink] = useState<string | null>(null),
+    [inviteLinkExpiry, setInviteLinkExpiry] = useState<string | null>(null),
+    [copied, setCopied] = useState(false);
   const [projectModalOpen, setProjectModalOpen] = useState(false);
   const [invitePanelOpen, setInvitePanelOpen] = useState(false);
   const [memberPendingRemoval, setMemberPendingRemoval] =
@@ -181,18 +184,23 @@ export default function Dashboard() {
   });
   const inviteMember = useMutation({
     mutationFn: () =>
-      api<{ email: string; pending: boolean }>(
-        `/api/organizations/${org}/members/`,
-        {
-          method: "POST",
-          json: { email: inviteEmail, role: inviteRole },
-        },
-      ),
+      api<{
+        email: string;
+        pending: boolean;
+        invite_url?: string;
+        expires_at?: string;
+      }>(`/api/organizations/${org}/members/`, {
+        method: "POST",
+        json: { email: inviteEmail, role: inviteRole },
+      }),
     onSuccess: async (result) => {
       setInviteEmail("");
+      setInviteLink(result.invite_url ?? null);
+      setInviteLinkExpiry(result.expires_at ?? null);
+      setCopied(false);
       setMemberFeedback(
         result.pending
-          ? `Invitation sent to ${result.email}. They can register to join.`
+          ? `Invitation sent to ${result.email}.`
           : `${result.email} was added to this organization.`,
       );
       await qc.invalidateQueries({ queryKey: ["members", org] });
@@ -591,6 +599,8 @@ export default function Dashboard() {
                   onSubmit={(event) => {
                     event.preventDefault();
                     setMemberFeedback("");
+                    setInviteLink(null);
+                    setCopied(false);
                     inviteMember.mutate();
                   }}
                 >
@@ -638,9 +648,61 @@ export default function Dashboard() {
             </div>
           )}
           {memberFeedback && (
-            <p role="status" className="text-sm text-green-700">
-              {memberFeedback}
-            </p>
+            <div className="mt-2 space-y-2">
+              <p role="status" className="text-sm text-green-700">
+                {memberFeedback}
+              </p>
+              {inviteLink && (
+                <div className="rounded-md border border-line bg-surface p-3 text-sm">
+                  <p className="font-medium">Share this invite link</p>
+                  <p className="mt-0.5 text-xs text-muted">
+                    The link works once and expires on{" "}
+                    {inviteLinkExpiry
+                      ? new Date(inviteLinkExpiry).toLocaleDateString()
+                      : "the expiry date"}
+                    .
+                  </p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <input
+                      readOnly
+                      aria-label="Invite link"
+                      className="input flex-1 text-xs"
+                      value={inviteLink}
+                    />
+                    <button
+                      type="button"
+                      className="btn shrink-0 whitespace-nowrap text-sm"
+                      onClick={() => {
+                        if (navigator.clipboard) {
+                          navigator.clipboard
+                            .writeText(inviteLink)
+                            .then(() => {
+                              setCopied(true);
+                              setTimeout(() => setCopied(false), 2000);
+                            })
+                            .catch(() => {});
+                        } else {
+                          // Fallback for environments without Clipboard API.
+                          const ta = document.createElement("textarea");
+                          ta.value = inviteLink;
+                          ta.style.position = "fixed";
+                          ta.style.opacity = "0";
+                          document.body.appendChild(ta);
+                          ta.focus();
+                          ta.select();
+                          document.execCommand("copy");
+                          document.body.removeChild(ta);
+                          setCopied(true);
+                          setTimeout(() => setCopied(false), 2000);
+                        }
+                      }}
+                    >
+                      {copied ? "Copied!" : "Copy invite link"}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           )}
           {(changeMemberRole.isError || removeMember.isError) && (
             <p role="alert" className="text-sm text-warn">

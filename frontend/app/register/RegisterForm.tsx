@@ -7,6 +7,7 @@ import {
   api,
   apiFieldErrors,
   apiFormErrorMessage,
+  setOrganization,
   setSession,
 } from "@/lib/api";
 import PasswordField from "../components/PasswordField";
@@ -41,10 +42,18 @@ export default function RegisterForm({ invitation }: { invitation?: string }) {
     setFieldErrors({});
     setSubmitting(true);
     try {
-      await api("/api/auth/register/", {
-        method: "POST",
-        json: invitation ? { ...f, invite: invitation } : f,
-      });
+      const registered = await api<{ organization_id?: number | null }>(
+        "/api/auth/register/",
+        {
+          method: "POST",
+          json: invitation ? { ...f, invite: invitation } : f,
+        },
+      );
+      // Activate the joined organization before auto-login so the dashboard
+      // opens on the correct workspace immediately.
+      if (registered.organization_id) {
+        setOrganization(String(registered.organization_id));
+      }
     } catch (x: unknown) {
       if (x instanceof ApiError && x.status === 429) {
         setErr(THROTTLE_MESSAGE);

@@ -19,8 +19,15 @@ def register_user(data):
     data = dict(data)
     invitation_token = data.pop("invite", None)
     user = User.objects.create_user(**data)
+    organization_id = None
     if invitation_token:
+        from apps.organizations.models import OrganizationMember
+
         accept_pending_invitations(user, invitation_token)
+        membership = OrganizationMember.objects.filter(user=user).first()
+        if membership:
+            organization_id = membership.organization_id
+    user._joined_organization_id = organization_id
     return user
 
 

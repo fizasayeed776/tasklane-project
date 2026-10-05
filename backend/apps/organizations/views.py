@@ -68,8 +68,14 @@ class OrganizationViewSet(
             s.is_valid(raise_exception=True)
             member = services.invite_member(request.user, org, **s.validated_data)
             if isinstance(member, PendingInvitation):
+                from django.conf import settings
+
                 result = PendingInvitationSerializer(member).data
                 result["pending"] = True
+                result["invite_url"] = (
+                    f"{settings.FRONTEND_URL}/register?invite={member.token}"
+                )
+                result["expires_at"] = member.expires_at
             else:
                 result = MemberSerializer(member).data
                 result["pending"] = False
