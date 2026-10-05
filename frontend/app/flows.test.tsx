@@ -989,9 +989,7 @@ describe("frontend user flows", () => {
     fireEvent.click(screen.getByRole("button", { name: "Send invitation" }));
 
     expect(
-      await screen.findByText(
-        "Invitation sent to new@example.com. They can register to join.",
-      ),
+      await screen.findByText("Invitation sent to new@example.com."),
     ).toBeInTheDocument();
     expect(email).toHaveValue("");
     expect(mocks.api).toHaveBeenCalledWith(
@@ -1505,7 +1503,11 @@ describe("frontend user flows", () => {
 
   it("redirects to /login when registration succeeds but automatic login fails", async () => {
     mocks.api
-      .mockResolvedValueOnce(undefined) // register succeeds
+      .mockResolvedValueOnce({
+        id: 99,
+        email: "brand-new@example.com",
+        organization_id: null,
+      }) // register
       .mockRejectedValueOnce(
         new ApiError("THROTTLED", "Request was throttled.", 429),
       ); // login throttled
@@ -1523,5 +1525,125 @@ describe("frontend user flows", () => {
     await waitFor(() =>
       expect(mocks.push).toHaveBeenCalledWith("/login?registered=1"),
     );
+  });
+
+  // ── Part B invite link copy button ────────────────────────────────────────
+
+  it("shows the copy invite link button for a pending invitation and copies on click", async () => {
+    const inviteUrl = "http://localhost:3000/register?invite=tok123";
+    mocks.api.mockImplementation(
+      async (endpoint: string, init?: RequestInit & { json?: unknown }) => {
+        if (endpoint === "/api/organizations/") {
+          return [{ id: 2, name: "Acme", role: "OWNER" }];
+        }
+        if (endpoint === "/api/organizations/2/members/") {
+          if (init?.method === "POST")
+            return {
+              email: "new@example.com",
+              role: "MEMBER",
+              pending: true,
+              invite_url: inviteUrl,
+              expires_at: "2026-11-01T00:00:00Z",
+            };
+          return [];
+        }
+        if (endpoint === "/api/dashboard/") return {};
+        if (endpoint === "/api/projects/?ordering=-created_at")
+          return { results: [] };
+        if (endpoint === "/api/activity/") return [];
+        throw new Error(`Unexpected: ${endpoint}`);
+      },
+    );
+
+    const writtenText: string[] = [];
+    vi.stubGlobal("navigator", {
+      clipboard: {
+        writeText: async (text: string) => {
+          writtenText.push(text);
+        },
+      },
+    });
+
+    renderDashboard();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Invite member" }),
+    );
+    fireEvent.change(await screen.findByPlaceholderText("Member email"), {
+      target: { value: "new@example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send invitation" }));
+
+    const copyBtn = await screen.findByRole("button", {
+      name: "Copy invite link",
+    });
+    fireEvent.click(copyBtn);
+
+    await waitFor(() => expect(writtenText).toContain(inviteUrl));
+    expect(
+      await screen.findByRole("button", { name: "Copied!" }),
+    ).toBeInTheDocument();
+  });
+
+  it("shows no copy link button when a registered user is added directly", async () => {
+    mocks.api.mockImplementation(
+      async (endpoint: string, init?: RequestInit & { json?: unknown }) => {
+        if (endpoint === "/api/organizations/") {
+          return [{ id: 2, name: "Acme", role: "OWNER" }];
+        }
+        if (endpoint === "/api/organizations/2/members/") {
+          if (init?.method === "POST")
+            return {
+              id: 7,
+              user_id: 5,
+              email: "existing@example.com",
+              name: "Existing",
+              role: "MEMBER",
+              pending: false,
+            };
+          return [];
+        }
+        if (endpoint === "/api/dashboard/") return {};
+        if (endpoint === "/api/projects/?ordering=-created_at")
+          return { results: [] };
+        if (endpoint === "/api/activity/") return [];
+        throw new Error(`Unexpected: ${endpoint}`);
+      },
+    );
+
+    renderDashboard();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Invite member" }),
+    );
+    fireEvent.change(await screen.findByPlaceholderText("Member email"), {
+      target: { value: "existing@example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send invitation" }));
+
+    await screen.findByRole("status");
+    expect(
+      screen.queryByRole("button", { name: "Copy invite link" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("register with invite token activates the returned organization", async () => {
+    mocks.api
+      .mockResolvedValueOnce({
+        id: 99,
+        email: "joiner@example.com",
+        organization_id: 7,
+      }) // register
+      .mockResolvedValueOnce({ access: "tok", refresh: "ref" }); // login
+
+    render(<RegisterForm invitation="mytoken" />);
+    fireEvent.change(screen.getByPlaceholderText("Email"), {
+      target: { value: "joiner@example.com" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("Password"), {
+      target: { value: "StrongPass!234" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+
+    await waitFor(() => expect(mocks.push).toHaveBeenCalledWith("/dashboard"));
+    expect(localStorage.getItem("org")).toBe("7");
   });
 });
