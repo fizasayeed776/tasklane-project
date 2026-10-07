@@ -488,7 +488,7 @@ Backend tests enforce a minimum 80% coverage threshold. `pytest.ini` supplies a 
 
 ### Dashboard — stats, projects, recent activity, and organization management
 
-![Dashboard showing stats, projects, recent activity, org members, and danger zone](docs/screenshots/02-dashboard.png)
+![Dashboard showing stats, projects, recent activity, org members, and danger zone](docs/screenshots/02-dasboard.png)
 
 ### Viewer role — dashboard with member list and role badges
 
@@ -508,7 +508,7 @@ Backend tests enforce a minimum 80% coverage threshold. `pytest.ini` supplies a 
 
 ### REST API — Swagger UI endpoint list
 
-![Swagger UI showing all REST endpoints grouped by resource](docs/screenshots/10-swagger.png)
+![Swagger UI showing all REST endpoints grouped by resource](docs/screenshots/04-swagger.png)
 
 ### Demo walkthrough
 
