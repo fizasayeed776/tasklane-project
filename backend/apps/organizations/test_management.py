@@ -66,16 +66,38 @@ def test_seed_demo_creates_expected_roles():
 
 @override_settings(DEBUG=True)
 def test_seed_demo_is_idempotent():
-    _run_seed()
-    first_user_count = User.objects.count()
-    first_task_count = Task.objects.count()
-    first_org_count = Organization.objects.count()
+    _run_seed(force=True)
 
-    # Second run must not create duplicates or raise
-    _run_seed()
-    assert User.objects.count() == first_user_count
-    assert Task.objects.count() == first_task_count
-    assert Organization.objects.count() == first_org_count
+    demo_org = Organization.objects.get(name="Demo Org")
+    first_counts = {
+        "users": User.objects.count(),
+        "organizations": Organization.objects.count(),
+        "projects": demo_org.projects.count(),
+        "tasks": Task.objects.filter(project__organization=demo_org).count(),
+        "comments": Comment.objects.filter(
+            task__project__organization=demo_org
+        ).count(),
+        "activities": Activity.objects.filter(organization=demo_org).count(),
+    }
+    assert first_counts["organizations"] == 2
+    assert first_counts["projects"] == 2
+    assert first_counts["tasks"] == 8
+    assert first_counts["comments"] == 3
+
+    _run_seed(force=True)
+
+    demo_org.refresh_from_db()
+    second_counts = {
+        "users": User.objects.count(),
+        "organizations": Organization.objects.count(),
+        "projects": demo_org.projects.count(),
+        "tasks": Task.objects.filter(project__organization=demo_org).count(),
+        "comments": Comment.objects.filter(
+            task__project__organization=demo_org
+        ).count(),
+        "activities": Activity.objects.filter(organization=demo_org).count(),
+    }
+    assert second_counts == first_counts
 
 
 @override_settings(DEBUG=False)
