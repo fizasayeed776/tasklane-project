@@ -244,6 +244,19 @@ No role can change or remove their own membership. Comment authors can edit/dele
 
 Security notes: use a unique `DJANGO_SECRET_KEY` of at least 50 characters without placeholder text outside debug mode; do not commit `.env`; restrict `ALLOWED_HOSTS` and CORS origins; use TLS and production-grade secret storage in deployment; keep authentication throttling enabled; and use HTTPS/WSS in production. `localStorage` tokens are readable by JavaScript, so protect the frontend against cross-site scripting and plan the documented `httpOnly` cookie migration.
 
+### Threat model → defence → proof
+
+| Threat | Defence | Test |
+|---|---|---|
+| Unauthorized organization access | Every queryset is scoped to the requester's memberships in the selectors layer; an organization ID from the client is never trusted | `test_nonmember_cannot_retrieve_or_list_another_organizations_data`, `test_project_lists_never_include_projects_from_other_organizations` |
+| IDOR / insecure object access | Foreign-tenant objects reached through tenant-scoped detail selectors return 404 (not 403), preventing ID probing | `test_cannot_access_other_org_task`, `test_cannot_list_other_org_projects`, `test_cross_organization_task_comment_and_activity_access_is_hidden`, `test_project_detail_and_mutations_hide_foreign_tenant_objects` |
+| Cross-tenant writes | Related objects (project, assignee, new owner) are validated against the same organization | `test_cannot_create_project_in_foreign_org`, `test_task_create_rejects_foreign_assignee_and_untrusted_fields`, `test_transfer_ownership_to_cross_organization_member_returns_404` |
+| Mass assignment | Serializers enumerate allowed fields; `created_by` and `organization` are read-only or derived, while project organization selection is separately role-checked | `test_task_create_rejects_foreign_assignee_and_untrusted_fields` |
+| Privilege escalation (roles) | Role permissions live in the permissions layer, enforced on the backend, not only by hiding UI buttons | `test_viewer_cannot_mutate_tasks_or_add_comments`, `test_non_admin_cannot_create_update_or_delete_projects`, `test_member_and_viewer_cannot_manage_organization_members`, `test_non_owner_cannot_delete_organization` |
+| Invalid / expired JWT | Normalized 401 errors, rotating refresh tokens with blacklist, WebSocket handshake also rejects bad tokens | `test_invalid_and_expired_tokens_have_normalized_errors`, `test_websocket_rejects_missing_and_expired_jwt` |
+| Brute force on sensitive endpoints | Per-view scoped throttling, configurable via environment (defaults: login 10/min, register 10/min, password 5/min, refresh 60/min) | `test_auth_endpoints_are_throttled`, `test_login_scope_is_throttled_at_configured_limit`, `test_throttle_rates_are_env_configurable` |
+| Information leaks | Consistent error envelope, no stack traces; malformed reset links do not cause a 500 | `test_password_reset_rejects_malformed_uid_without_internal_error` |
+
 ### Rate limiting
 
 Every unauthenticated auth endpoint has its own throttle scope so that a burst on one path (e.g. many token refreshes) cannot lock users out of another (e.g. login). Authenticated account-mutation endpoints share a separate scope.
