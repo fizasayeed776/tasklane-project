@@ -382,7 +382,9 @@ export default function ProjectClient({ id }: { id: string }) {
                 <button
                   type="button"
                   className="min-h-10 w-full rounded-md px-3 text-left text-sm text-danger hover:bg-danger-surface"
-                  onClick={() => {
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
                     setDeleteProjectOpen(true);
                     setActionsOpen(false);
                   }}

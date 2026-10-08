@@ -77,6 +77,7 @@ export default function AccessibleDialog({
   return (
     <div
       className="fixed inset-0 z-50 grid place-items-center bg-ink/35 p-4"
+      onClick={(event) => event.stopPropagation()}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) close.current();
       }}
