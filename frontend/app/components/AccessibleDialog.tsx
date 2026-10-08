@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, useEffect, useRef } from "react";
+import { ReactNode, RefObject, useEffect, useRef } from "react";
 
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -11,12 +11,14 @@ export default function AccessibleDialog({
   labelledBy,
   onClose,
   role = "dialog",
+  returnFocusRef,
 }: {
   children: ReactNode;
   className: string;
   labelledBy: string;
   onClose: () => void;
   role?: "dialog" | "alertdialog";
+  returnFocusRef?: RefObject<HTMLElement | null>;
 }) {
   const dialog = useRef<HTMLElement>(null);
   const close = useRef(onClose);
@@ -25,6 +27,7 @@ export default function AccessibleDialog({
   }, [onClose]);
 
   useEffect(() => {
+    const requestedFocusTarget = returnFocusRef?.current;
     const previouslyFocused =
       document.activeElement instanceof HTMLElement
         ? document.activeElement
@@ -66,9 +69,10 @@ export default function AccessibleDialog({
     document.addEventListener("keydown", handleKeyDown);
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
-      if (previouslyFocused?.isConnected) previouslyFocused.focus();
+      const focusTarget = requestedFocusTarget ?? previouslyFocused;
+      if (focusTarget?.isConnected) focusTarget.focus();
     };
-  }, []);
+  }, [returnFocusRef]);
 
   return (
     <div

@@ -25,6 +25,7 @@ import {
 } from "@/lib/api";
 import { initials, relativeTime, roleLabel } from "@/lib/format";
 import AccessibleDialog from "../../../components/AccessibleDialog";
+import DeleteProjectDialog from "../../../components/DeleteProjectDialog";
 import QueryError from "../../../components/QueryError";
 import { useToast } from "../../../components/ToastProvider";
 
@@ -94,9 +95,11 @@ export default function ProjectClient({ id }: { id: string }) {
   const [draft, setDraft] = useState({ name: "", description: "" });
   const [createOpen, setCreateOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
+  const [deleteProjectOpen, setDeleteProjectOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Task | null>(null);
   const [archivePrompt, setArchivePrompt] = useState(false);
   const [dropTarget, setDropTarget] = useState<Status | null>(null);
+  const projectActionsRef = useRef<HTMLButtonElement>(null);
   const querySearchRef = useRef(filters.search);
   const tasksKey = useMemo(
     () => ["tasks", id, filters] as const,
@@ -152,7 +155,7 @@ export default function ProjectClient({ id }: { id: string }) {
     queryFn: () => api(`/api/organizations/${orgId}/members/`),
     enabled: !!orgId,
   });
-  const tasks = useQuery<{ results: Task[] }>({
+  const tasks = useQuery<{ results: Task[]; count?: number }>({
     queryKey: tasksKey,
     queryFn: async () => {
       const params = new URLSearchParams({ project: id });
@@ -160,8 +163,16 @@ export default function ProjectClient({ id }: { id: string }) {
       if (filters.status) params.set("status", filters.status);
       if (filters.priority) params.set("priority", filters.priority);
       if (filters.assigned_to) params.set("assigned_to", filters.assigned_to);
+      let count: number | undefined;
+      const results = await fetchAllPages<Task>(
+        `/api/tasks/?${params.toString()}`,
+        (page) => {
+          count = page.count ?? count;
+        },
+      );
       return {
-        results: await fetchAllPages<Task>(`/api/tasks/?${params.toString()}`),
+        results,
+        count,
       };
     },
   });
@@ -331,6 +342,7 @@ export default function ProjectClient({ id }: { id: string }) {
         {manageable && project.data && (
           <div className="relative">
             <button
+              ref={projectActionsRef}
               type="button"
               className="btn shrink-0 whitespace-nowrap"
               aria-expanded={actionsOpen}
@@ -365,6 +377,17 @@ export default function ProjectClient({ id }: { id: string }) {
                   {project.data.status === "ARCHIVED"
                     ? "Restore project"
                     : "Archive project"}
+                </button>
+                <div className="my-1 border-t border-line" aria-hidden="true" />
+                <button
+                  type="button"
+                  className="min-h-10 w-full rounded-md px-3 text-left text-sm text-danger hover:bg-danger-surface"
+                  onClick={() => {
+                    setDeleteProjectOpen(true);
+                    setActionsOpen(false);
+                  }}
+                >
+                  Delete project
                 </button>
               </div>
             )}
@@ -879,6 +902,25 @@ export default function ProjectClient({ id }: { id: string }) {
             </button>
           </div>
         </AccessibleDialog>
+      )}
+      {deleteProjectOpen && project.data && manageable && (
+        <DeleteProjectDialog
+          project={project.data}
+          taskCount={
+            !filters.search &&
+            !filters.status &&
+            !filters.priority &&
+            !filters.assigned_to
+              ? tasks.data?.count
+              : undefined
+          }
+          onClose={() => setDeleteProjectOpen(false)}
+          returnFocusRef={projectActionsRef}
+          onArchiveInstead={() => {
+            setDeleteProjectOpen(false);
+            setArchivePrompt(true);
+          }}
+        />
       )}
       {deleteTarget && (
         <AccessibleDialog
