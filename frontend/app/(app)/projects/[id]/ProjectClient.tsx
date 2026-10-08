@@ -381,7 +381,7 @@ export default function ProjectClient({ id }: { id: string }) {
                 <div className="my-1 border-t border-line" aria-hidden="true" />
                 <button
                   type="button"
-                  className="min-h-10 w-full rounded-md px-3 text-left text-sm text-danger hover:bg-danger-surface"
+                  className="min-h-10 w-full rounded-md px-3 text-left text-sm text-danger transition-colors hover:bg-danger-hover-surface hover:text-danger-hover-text focus-visible:bg-danger-hover-surface focus-visible:text-danger-hover-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
                   onClick={(event) => {
                     event.preventDefault();
                     event.stopPropagation();

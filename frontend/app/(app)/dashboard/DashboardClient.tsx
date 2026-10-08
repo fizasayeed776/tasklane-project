@@ -434,7 +434,7 @@ export default function Dashboard() {
                   {canManage(role) && (
                     <button
                       type="button"
-                      className="min-h-11 min-w-11 shrink-0 rounded-md px-2 text-xs text-danger underline underline-offset-2 hover:bg-danger-surface focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-danger"
+                      className="min-h-11 min-w-11 shrink-0 rounded-md border border-transparent px-2 text-xs text-danger underline underline-offset-2 transition-colors hover:border-danger-hover-border hover:bg-danger-hover-surface hover:text-danger-hover-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
                       aria-label={`Delete project ${project.name}`}
                       onClick={(event) => {
                         event.preventDefault();

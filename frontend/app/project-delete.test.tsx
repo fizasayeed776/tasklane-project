@@ -158,6 +158,8 @@ describe("delete project confirmation", () => {
       name: "Delete project Roadmap",
     });
     expect(deleteButton.closest("a")).toBeNull();
+    expect(deleteButton.classList.contains("w-full")).toBe(false);
+    expect(deleteButton.classList.contains("flex-1")).toBe(false);
     fireEvent.click(deleteButton);
 
     const dialog = await screen.findByRole("alertdialog", {
