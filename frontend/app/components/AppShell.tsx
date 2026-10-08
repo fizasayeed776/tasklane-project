@@ -53,11 +53,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   });
   const [organizationId, setOrganizationId] = useState("");
   const [organizationMenuOpen, setOrganizationMenuOpen] = useState(false);
-  const [openDropdown, setOpenDropdown] = useState<
-    "notifications" | "user" | null
-  >(null);
-  const notificationsContainerRef = useRef<HTMLDivElement>(null);
-  const notificationsButtonRef = useRef<HTMLButtonElement>(null);
+  const [openDropdown, setOpenDropdown] = useState<"user" | null>(null);
   const userContainerRef = useRef<HTMLDivElement>(null);
   const userButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -68,7 +64,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       const target = event.target;
       if (
         target instanceof Node &&
-        !notificationsContainerRef.current?.contains(target) &&
         !userContainerRef.current?.contains(target)
       ) {
         setOpenDropdown(null);
@@ -78,11 +73,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key !== "Escape") return;
       setOpenDropdown(null);
-      if (openDropdown === "notifications") {
-        notificationsButtonRef.current?.focus();
-      } else {
-        userButtonRef.current?.focus();
-      }
+      userButtonRef.current?.focus();
     }
 
     document.addEventListener("pointerdown", handlePointerDown);
@@ -202,18 +193,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               </div>
             )}
           </div>
-          <div ref={notificationsContainerRef}>
-            <NotificationsNavbar
-              open={openDropdown === "notifications"}
-              onToggle={() =>
-                setOpenDropdown((current) =>
-                  current === "notifications" ? null : "notifications",
-                )
-              }
-              onClose={() => setOpenDropdown(null)}
-              buttonRef={notificationsButtonRef}
-            />
-          </div>
+          <NotificationsNavbar />
           <div ref={userContainerRef} className="relative">
             <button
               ref={userButtonRef}

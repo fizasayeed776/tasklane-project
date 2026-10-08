@@ -185,6 +185,8 @@ REST_FRAMEWORK = {
         "auth_password": env("THROTTLE_PASSWORD", "5/min"),
         # Authenticated account-mutation endpoints (change-password/email, logout).
         "auth_account": env("THROTTLE_ACCOUNT", "10/min"),
+        # Keep notification reads and updates separate from account mutations.
+        "notifications": env("THROTTLE_NOTIFICATIONS", "120/min"),
     },
 }
 SIMPLE_JWT = {
@@ -229,6 +231,10 @@ CELERY_BEAT_SCHEDULE = {
     "overdue-check": {"task": "apps.tasks.jobs.flag_overdue_tasks", "schedule": 3600.0},
     "prune-stale-invitations": {
         "task": "apps.organizations.jobs.prune_stale_invitations",
+        "schedule": 86400.0,  # once per day
+    },
+    "prune-read-notifications": {
+        "task": "apps.notifications.jobs.prune_read_notifications_job",
         "schedule": 86400.0,  # once per day
     },
 }

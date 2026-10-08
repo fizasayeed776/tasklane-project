@@ -10,6 +10,7 @@ export const config = {
     "/dashboard/:path*",
     "/projects/:path*",
     "/tasks/:path*",
+    "/notifications/:path*",
     "/settings/:path*",
   ],
 };

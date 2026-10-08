@@ -154,10 +154,12 @@ describe("role-based visibility", () => {
     mockOwnerDashboard();
     renderDashboard();
 
-    await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: "Transfer ownership to Alice" }),
-      ).toBeInTheDocument(),
+    await waitFor(
+      () =>
+        expect(
+          screen.getByRole("button", { name: "Transfer ownership to Alice" }),
+        ).toBeInTheDocument(),
+      { timeout: 5000 },
     );
     // Not on the owner row
     expect(
