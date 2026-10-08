@@ -407,47 +407,47 @@ export default function Dashboard() {
               const lastChanged =
                 summary?.latestTaskChange || project.created_at;
               return (
-                <li key={project.id}>
-                  <div className="flex items-center gap-3">
-                    <Link
-                      className="flex min-h-16 min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-2 py-3 hover:text-accent"
-                      href={`/projects/${project.id}`}
+                <li key={project.id} className="flex items-center gap-3">
+                  <Link
+                    className="flex min-h-16 min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-2 py-3 hover:text-accent"
+                    href={`/projects/${project.id}`}
+                  >
+                    <span className="min-w-0 flex-1 font-medium">
+                      {project.name}
+                    </span>
+                    <span
+                      className={`rounded-full px-2.5 py-1 text-xs font-medium ${project.status === "ACTIVE" ? "bg-accent-soft text-ink" : "bg-line text-muted"}`}
                     >
-                      <span className="min-w-0 flex-1 font-medium">
-                        {project.name}
-                      </span>
-                      <span
-                        className={`rounded-full px-2.5 py-1 text-xs font-medium ${project.status === "ACTIVE" ? "bg-accent-soft text-ink" : "bg-line text-muted"}`}
-                      >
-                        {project.status === "ACTIVE" ? "Active" : "Archived"}
-                      </span>
-                      <span className="text-sm text-muted">
-                        {summary ? summary.count : "–"} tasks
-                      </span>
-                      <span className="text-xs text-muted">
-                        {summary?.latestTaskChange
-                          ? `Updated ${relativeTime(lastChanged)}`
-                          : project.created_at
-                            ? `Created ${relativeTime(project.created_at)}`
-                            : "No recent activity"}
-                      </span>
-                    </Link>
-                    {canManage(role) && (
-                      <button
-                        type="button"
-                        className="min-h-10 shrink-0 rounded-md px-2 text-xs text-danger underline underline-offset-2 hover:bg-danger-surface"
-                        aria-label={`Delete project ${project.name}`}
-                        onClick={() =>
-                          setProjectToDelete({
-                            project,
-                            taskCount: summary?.count,
-                          })
-                        }
-                      >
-                        Delete
-                      </button>
-                    )}
-                  </div>
+                      {project.status === "ACTIVE" ? "Active" : "Archived"}
+                    </span>
+                    <span className="text-sm text-muted">
+                      {summary ? summary.count : "–"} tasks
+                    </span>
+                    <span className="text-xs text-muted">
+                      {summary?.latestTaskChange
+                        ? `Updated ${relativeTime(lastChanged)}`
+                        : project.created_at
+                          ? `Created ${relativeTime(project.created_at)}`
+                          : "No recent activity"}
+                    </span>
+                  </Link>
+                  {canManage(role) && (
+                    <button
+                      type="button"
+                      className="min-h-11 min-w-11 shrink-0 rounded-md border border-transparent px-2 text-xs text-danger underline underline-offset-2 transition-colors hover:border-danger-hover-border hover:bg-danger-hover-surface hover:text-danger-hover-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+                      aria-label={`Delete project ${project.name}`}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        setProjectToDelete({
+                          project,
+                          taskCount: summary?.count,
+                        });
+                      }}
+                    >
+                      Delete
+                    </button>
+                  )}
                 </li>
               );
             })}

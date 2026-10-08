@@ -14,6 +14,11 @@
   --warning: #b45309;
   --danger: #b91c1c;
   --danger-surface: #b91c1c;
+  --danger-hover-surface: #fef2f2;
+  --danger-hover-border: #fecaca;
+  --danger-hover-text: #991b1b;
+  --danger-button: #b91c1c;
+  --danger-button-hover: #991b1b;
   --on-danger: #ffffff;
   --success: #15803d;
 }
@@ -31,6 +36,11 @@
     --warning: #f0b963;
     --danger: #ff9292;
     --danger-surface: #7f1d1d;
+    --danger-hover-surface: #451a1a;
+    --danger-hover-border: #7f1d1d;
+    --danger-hover-text: #fecaca;
+    --danger-button: #b91c1c;
+    --danger-button-hover: #991b1b;
     --on-danger: #ffffff;
     --success: #78d99a;
   }

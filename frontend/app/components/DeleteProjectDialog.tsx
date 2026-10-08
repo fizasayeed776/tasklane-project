@@ -137,7 +137,7 @@ export default function DeleteProjectDialog({
           Cancel
         </button>
         <button
-          className="min-h-10 rounded-md bg-danger px-4 font-medium text-white disabled:opacity-50"
+          className="min-h-10 rounded-md bg-danger-button px-4 font-medium text-on-danger transition-colors hover:bg-danger-button-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink disabled:cursor-not-allowed disabled:bg-muted/30 disabled:text-muted disabled:opacity-100 disabled:hover:bg-muted/30"
           type="button"
           disabled={confirmation !== project.name || remove.isPending}
           onClick={() => remove.mutate()}

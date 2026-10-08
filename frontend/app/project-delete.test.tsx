@@ -150,6 +150,55 @@ describe("project deletion permissions", () => {
 });
 
 describe("delete project confirmation", () => {
+  it("opens the dashboard dialog without navigating and keeps it outside the project list", async () => {
+    mockApi("OWNER");
+    renderWithClient(<Dashboard />);
+
+    const deleteButton = await screen.findByRole("button", {
+      name: "Delete project Roadmap",
+    });
+    expect(deleteButton.closest("a")).toBeNull();
+    expect(deleteButton.classList.contains("w-full")).toBe(false);
+    expect(deleteButton.classList.contains("flex-1")).toBe(false);
+    fireEvent.click(deleteButton);
+
+    const dialog = await screen.findByRole("alertdialog", {
+      name: "Delete project?",
+    });
+    const projectList = screen
+      .getByRole("heading", { name: "Projects" })
+      .closest("section")
+      ?.querySelector("ul");
+    expect(dialog.closest("a")).toBeNull();
+    expect(projectList).not.toBeNull();
+    expect(projectList?.contains(dialog)).toBe(false);
+    expect(mocks.push).not.toHaveBeenCalled();
+
+    fireEvent.click(within(dialog).getByLabelText("Project name confirmation"));
+    expect(mocks.push).not.toHaveBeenCalled();
+  });
+
+  it("keeps the project-page dialog outside the actions menu without navigation", async () => {
+    mockApi("OWNER");
+    renderWithClient(<ProjectPage id="1" />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Project actions" }),
+    );
+    const menuItem = await screen.findByRole("button", {
+      name: "Delete project",
+    });
+    expect(menuItem.closest("a")).toBeNull();
+    fireEvent.click(menuItem);
+
+    const dialog = await screen.findByRole("alertdialog", {
+      name: "Delete project?",
+    });
+    expect(dialog.closest("a")).toBeNull();
+    expect(menuItem.parentElement?.contains(dialog)).toBe(false);
+    expect(mocks.push).not.toHaveBeenCalled();
+  });
+
   it("requires the exact project name and restores focus when Escape closes", async () => {
     mockApi("OWNER");
     renderWithClient(<ProjectPage id="1" />);
