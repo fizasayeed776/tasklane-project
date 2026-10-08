@@ -17,7 +17,7 @@ flowchart LR
     Mail[Email backend]
 
     Browser -->|HTTP REST + JWT| ASGI
-    Browser <-->|WebSocket notifications + JWT subprotocol| ASGI
+    Browser <-->|WebSocket updates + JWT subprotocol| ASGI
     ASGI -->|SQL| DB
     ASGI -->|Queue publish| Broker
     ASGI -->|Channel events| Channels
@@ -153,7 +153,7 @@ Each domain app follows the same separation:
 | `backend/apps/organizations/` | Organizations, memberships, roles, invitations, selectors and role permissions |
 | `backend/apps/projects/` | Project selectors, serializers, role permissions and service-layer mutations |
 | `backend/apps/tasks/` | Tasks, comments, activity history, selectors, role permissions, services and Celery jobs |
-| `backend/apps/notifications/` | JWT-authenticated WebSocket notifications and Redis channel-layer publishing |
+| `backend/apps/notifications/` | Membership-scoped notification inbox/API, JWT-authenticated WebSockets, and retention |
 
 Selectors own read/query behavior; services own business rules and writes; serializers define API input/output; DRF permission classes in each core app enforce request and object access, and views route requests and delegate. Organization-scoped permission classes use the central `organizations.services.ensure_role` helper, while `organizations.selectors.role_of` supplies membership-role lookups; service-layer checks remain as defense in depth for non-HTTP callers. Task activity is written in the task service layer rather than through model signals.
 
@@ -165,6 +165,7 @@ The REST API is rooted at `/api/`:
 | Organizations | `/api/organizations/`, `/api/organizations/{id}/` (GET/DELETE), `/api/organizations/{id}/members/` (GET/POST), `/api/organizations/{id}/members/{member_id}/` (PATCH/DELETE), `/api/organizations/{id}/projects/`, `/api/organizations/{id}/transfer-ownership/` (POST), `/api/organizations/{id}/leave/` (POST) |
 | Projects | `/api/projects/`, `/api/projects/{id}/` |
 | Tasks | `/api/tasks/`, `/api/tasks/{id}/`, `/api/tasks/{id}/comments/`, `/api/tasks/{id}/activity/` |
+| Notifications | `/api/notifications/`, `/api/notifications/unread-count/`, `/api/notifications/{id}/read/`, `/api/notifications/mark-all-read/` |
 | Comments | `/api/comments/{id}/` (PATCH/DELETE) |
 | Dashboard/activity | `/api/dashboard/`, `/api/activity/` |
 
@@ -254,7 +255,7 @@ Security notes: use a unique `DJANGO_SECRET_KEY` of at least 50 characters witho
 | Mass assignment | Serializers enumerate allowed fields; `created_by` and `organization` are read-only or derived, while project organization selection is separately role-checked | `test_task_create_rejects_foreign_assignee_and_untrusted_fields` |
 | Privilege escalation (roles) | Role permissions live in the permissions layer, enforced on the backend, not only by hiding UI buttons | `test_viewer_cannot_mutate_tasks_or_add_comments`, `test_non_admin_cannot_create_update_or_delete_projects`, `test_member_and_viewer_cannot_manage_organization_members`, `test_non_owner_cannot_delete_organization` |
 | Invalid / expired JWT | Normalized 401 errors, rotating refresh tokens with blacklist, WebSocket handshake also rejects bad tokens | `test_invalid_and_expired_tokens_have_normalized_errors`, `test_websocket_rejects_missing_and_expired_jwt` |
-| Brute force on sensitive endpoints | Per-view scoped throttling, configurable via environment (defaults: login 10/min, register 10/min, password 5/min, refresh 60/min) | `test_auth_endpoints_are_throttled`, `test_login_scope_is_throttled_at_configured_limit`, `test_throttle_rates_are_env_configurable` |
+| Brute force on sensitive endpoints | Per-view scoped throttling, configurable via environment (defaults: login 10/min, register 10/min, password 5/min, refresh 60/min, notifications 120/min) | `test_auth_endpoints_are_throttled`, `test_login_scope_is_throttled_at_configured_limit`, `test_throttle_rates_are_env_configurable` |
 | Information leaks | Consistent error envelope, no stack traces; malformed reset links do not cause a 500 | `test_password_reset_rejects_malformed_uid_without_internal_error` |
 
 ### Rate limiting
@@ -268,6 +269,7 @@ Every unauthenticated auth endpoint has its own throttle scope so that a burst o
 | `auth_refresh` | `POST /api/auth/refresh/` | 60/min | `THROTTLE_REFRESH` |
 | `auth_password` | `POST /api/auth/password/forgot/`, `POST /api/auth/password/reset/` | 5/min | `THROTTLE_PASSWORD` |
 | `auth_account` | `POST /api/auth/password/change/`, `POST /api/auth/email/change/`, `POST /api/auth/logout/` | 10/min | `THROTTLE_ACCOUNT` |
+| `notifications` | `/api/notifications/` and its unread/read actions | 120/min | `THROTTLE_NOTIFICATIONS` |
 
 All limits are per IP address. A 429 response uses the standard error envelope with `"code": "THROTTLED"` and a `Retry-After` header.
 
@@ -345,9 +347,11 @@ sequenceDiagram
     Socket-->>User: WebSocket notification
 ```
 
-Celery Beat schedules `apps.tasks.jobs.flag_overdue_tasks` once per hour. The job selects tasks whose due date is before the local date, excludes `DONE` tasks, and checks `overdue_notified_at IS NULL`. It locks task rows in a transaction and rechecks the null condition in the update before setting the timestamp and writing one activity entry. Later runs skip already-marked tasks, preventing repeat flags and notifications. Overdue WebSocket notifications go to assigned users after commit; the overdue job does not send email.
+Celery Beat schedules `apps.tasks.jobs.flag_overdue_tasks` once per hour. The job selects tasks whose due date is before the local date, excludes `DONE` tasks, and checks `overdue_notified_at IS NULL`. It locks task rows in a transaction and rechecks the null condition in the update before setting the timestamp and writing one activity entry. Later runs skip already-marked tasks, preventing repeat flags and notifications. Overdue notifications are stored for the assigned user in the same transaction and sent over WebSocket after commit; the overdue job does not send email.
 
-The Channels consumer is exposed at `/ws/notifications/?organization_id=<id>`. It validates the JWT and organization membership at connection time, sends organization events only to organization members, sends assignment notifications only to the assigned user, and rechecks membership/token expiry before delivering an event. Notifications cover task assignment, new comments, and status changes. The frontend notification navbar reconnects as the session or active organization changes.
+The Channels consumer is exposed at `/ws/notifications/?organization_id=<id>`. It validates the JWT and organization membership at connection time and rechecks membership/token expiry before delivering an event. Assignment and overdue notifications are stored for the assignee; comment and status-change notifications are stored for the organization's current members except the actor. Each row has a read timestamp, organization, and optional task reference; deleting the task preserves the message with a null task. `GET /api/notifications/` returns the authenticated user's membership-scoped inbox newest first and supports `?unread=true`. The unread count is available at `/api/notifications/unread-count/`; users can mark one item read or mark all items read, optionally for one organization. Notifications for organizations the user has left are hidden. Celery Beat removes read rows older than 60 days once per day.
+
+The navbar bell links to `/notifications` and displays the persisted unread count. The notification centre provides All/Unread filters, pagination, a mark-all action, and task deep links. A websocket event invalidates the cached inbox/count and displays a toast with a View action. Changing the active organization before opening a task ensures the task's API queries use its organization context. `/notifications` is protected by the session middleware; the API remains the authorization boundary.
 
 ## Demo data and housekeeping
 

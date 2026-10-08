@@ -8,6 +8,7 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from apps.organizations.models import OrganizationMember as M
 from apps.organizations.selectors import role_of
 from apps.organizations.services import ensure_role
+from apps.notifications.selectors import organization_notification_recipients
 from apps.notifications.services import publish_notification
 
 from .jobs import send_assignment_email
@@ -45,14 +46,13 @@ def create_task(user, data):
     if assignee:
         _log(task, user, "task_assigned", f"assigned task to {assignee.display_name}.")
         transaction.on_commit(lambda: send_assignment_email.delay(task.id))
-        transaction.on_commit(
-            lambda: publish_notification(
-                project.organization_id,
-                "task_assigned",
-                f"You were assigned “{task.title}”.",
-                task.id,
-                assignee.id,
-            )
+        publish_notification(
+            project.organization_id,
+            "task_assigned",
+            f"You were assigned “{task.title}”.",
+            task.id,
+            [assignee.id],
+            actor_id=user.id,
         )
     return task
 
@@ -86,13 +86,14 @@ def update_task(user, task, data):
             "status_changed",
             f"changed task status from {old_status} to {task.status}.",
         )
-        transaction.on_commit(
-            lambda: publish_notification(
-                org_id,
-                "status_changed",
-                f"{user.display_name} changed “{task.title}” to {task.status}.",
-                task.id,
-            )
+        publish_notification(
+            org_id,
+            "status_changed",
+            f"{user.display_name} changed “{task.title}” to {task.status}.",
+            task.id,
+            organization_notification_recipients(org_id, user.id),
+            actor_id=user.id,
+            organization_wide=True,
         )
         if task.status == Task.Status.DONE:
             _log(task, user, "task_completed", f'completed task "{task.title}".')
@@ -111,14 +112,13 @@ def update_task(user, task, data):
             f"assigned task to {task.assigned_to.display_name}.",
         )
         transaction.on_commit(lambda: send_assignment_email.delay(task.id))
-        transaction.on_commit(
-            lambda: publish_notification(
-                org_id,
-                "task_assigned",
-                f"You were assigned “{task.title}”.",
-                task.id,
-                task.assigned_to_id,
-            )
+        publish_notification(
+            org_id,
+            "task_assigned",
+            f"You were assigned “{task.title}”.",
+            task.id,
+            [task.assigned_to_id],
+            actor_id=user.id,
         )
     return task
 
@@ -133,13 +133,15 @@ def add_comment(user, task, content):
     ensure_role(user, task.project.organization_id, M.Role.MEMBER)
     comment = Comment.objects.create(task=task, user=user, content=content)
     _log(task, user, "comment_added", f'commented on "{task.title}".')
-    transaction.on_commit(
-        lambda: publish_notification(
-            task.project.organization_id,
-            "comment_added",
-            f"{user.display_name} commented on “{task.title}”.",
-            task.id,
-        )
+    organization_id = task.project.organization_id
+    publish_notification(
+        organization_id,
+        "comment_added",
+        f"{user.display_name} commented on “{task.title}”.",
+        task.id,
+        organization_notification_recipients(organization_id, user.id),
+        actor_id=user.id,
+        organization_wide=True,
     )
     return comment
 

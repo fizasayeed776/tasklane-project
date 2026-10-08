@@ -591,6 +591,7 @@ def test_each_view_has_its_own_throttle_scope():
         RegisterView,
         ResetPasswordView,
     )
+    from apps.notifications.views import NotificationViewSet
 
     assert LoginView.throttle_scope == "auth_login"
     assert RegisterView.throttle_scope == "auth_register"
@@ -600,6 +601,7 @@ def test_each_view_has_its_own_throttle_scope():
     assert LogoutView.throttle_scope == "auth_account"
     assert ChangePasswordView.throttle_scope == "auth_account"
     assert ChangeEmailView.throttle_scope == "auth_account"
+    assert NotificationViewSet.throttle_scope == "notifications"
     # All unauthenticated scopes must be distinct so exhausting one
     # never blocks another endpoint.
     unauthenticated_scopes = [
@@ -622,6 +624,7 @@ def test_throttle_rates_are_env_configurable():
         "auth_refresh",
         "auth_password",
         "auth_account",
+        "notifications",
     }
 
 

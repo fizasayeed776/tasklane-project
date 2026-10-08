@@ -554,7 +554,7 @@ def test_assignment_email_and_overdue_jobs(monkeypatch):
             "task_overdue",
             'Task "Email me" is overdue.',
             task.id,
-            assigned.id,
+            [assigned.id],
         )
     ]
 

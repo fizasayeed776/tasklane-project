@@ -94,9 +94,11 @@ function renderAppShell() {
   });
   return render(
     <QueryClientProvider client={client}>
-      <AppShell>
-        <main>Workspace content</main>
-      </AppShell>
+      <ToastProvider>
+        <AppShell>
+          <main>Workspace content</main>
+        </AppShell>
+      </ToastProvider>
     </QueryClientProvider>,
   );
 }
@@ -392,7 +394,7 @@ describe("frontend user flows", () => {
     expect(screen.getByText("#7")).toBeInTheDocument();
   });
 
-  it("keeps navbar dropdowns exclusive, dismissible, and keyboard accessible", async () => {
+  it("keeps the notifications link separate from the keyboard-accessible user menu", async () => {
     localStorage.setItem("access", "short-lived-access-token");
     localStorage.setItem("org", "2");
     mocks.api.mockImplementation(async (endpoint: string) => {
@@ -402,34 +404,24 @@ describe("frontend user flows", () => {
       if (endpoint === "/api/auth/me/") {
         return { email: "owner@example.com", display_name: "Avery" };
       }
+      if (endpoint === "/api/notifications/unread-count/") {
+        return { count: 0 };
+      }
       throw new Error(`Unexpected API call: ${endpoint}`);
     });
     vi.stubGlobal("WebSocket", MockWebSocket);
     renderAppShell();
 
-    const notificationsButton = await screen.findByRole("button", {
+    const notificationsLink = await screen.findByRole("link", {
       name: "Notifications",
     });
     const userButton = screen.getByRole("button", { name: "User menu" });
 
-    expect(notificationsButton).toHaveAttribute("aria-expanded", "false");
+    expect(notificationsLink).toHaveAttribute("href", "/notifications");
     expect(userButton).toHaveAttribute("aria-expanded", "false");
 
-    fireEvent.click(notificationsButton);
-    expect(notificationsButton).toHaveAttribute("aria-expanded", "true");
-    expect(
-      screen.getByRole("heading", { name: "Recent notifications" }),
-    ).toBeInTheDocument();
-    fireEvent.click(notificationsButton);
-    expect(notificationsButton).toHaveAttribute("aria-expanded", "false");
-    fireEvent.click(notificationsButton);
-
     fireEvent.click(userButton);
-    expect(notificationsButton).toHaveAttribute("aria-expanded", "false");
     expect(userButton).toHaveAttribute("aria-expanded", "true");
-    expect(
-      screen.queryByRole("heading", { name: "Recent notifications" }),
-    ).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Log out" })).toBeInTheDocument();
 
     fireEvent.click(userButton);
@@ -438,14 +430,15 @@ describe("frontend user flows", () => {
       screen.queryByRole("button", { name: "Log out" }),
     ).not.toBeInTheDocument();
 
-    fireEvent.click(notificationsButton);
+    fireEvent.click(userButton);
     fireEvent.keyDown(document, { key: "Escape" });
-    expect(notificationsButton).toHaveAttribute("aria-expanded", "false");
-    expect(notificationsButton).toHaveFocus();
+    expect(userButton).toHaveAttribute("aria-expanded", "false");
+    expect(userButton).toHaveFocus();
 
     fireEvent.click(userButton);
     fireEvent.pointerDown(screen.getByText("Workspace content"));
     expect(userButton).toHaveAttribute("aria-expanded", "false");
+    expect(notificationsLink).toBeInTheDocument();
   });
 
   it("creates a task from the new-task modal", async () => {
@@ -1388,6 +1381,9 @@ describe("frontend user flows", () => {
       if (endpoint === "/api/auth/me/") {
         return { email: "owner@example.com", display_name: "Avery" };
       }
+      if (endpoint === "/api/notifications/unread-count/") {
+        return { count: 0 };
+      }
       throw new Error(`Unexpected API call: ${endpoint}`);
     });
     renderAppShell();
@@ -1401,10 +1397,9 @@ describe("frontend user flows", () => {
       "jwt.short-lived-access-token",
     ]);
 
-    fireEvent.click(screen.getByRole("button", { name: "Notifications" }));
     socket.onmessage?.({
       data: JSON.stringify({
-        id: "event-1",
+        id: 101,
         type: "comment_added",
         organization_id: 2,
         task_id: 8,
@@ -1414,16 +1409,14 @@ describe("frontend user flows", () => {
     } as MessageEvent);
 
     expect(
-      await screen.findByRole("link", { name: "A teammate commented." }),
-    ).toHaveAttribute("href", "/tasks/8");
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: "Mark notification as read: A teammate commented.",
-      }),
-    );
-    expect(
-      screen.getByRole("button", { name: "Notifications" }),
+      await screen.findByText("A teammate commented."),
     ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "View" }));
+    expect(mocks.push).toHaveBeenCalledWith("/tasks/8");
+    expect(screen.getByRole("link", { name: "Notifications" })).toHaveAttribute(
+      "href",
+      "/notifications",
+    );
   });
 
   // ── Part B: login and registration error messages ─────────────────────────

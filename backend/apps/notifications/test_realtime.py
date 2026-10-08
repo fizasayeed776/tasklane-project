@@ -10,6 +10,7 @@ from django.test import override_settings
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.accounts.models import User
+from apps.notifications.models import Notification
 from apps.notifications.services import publish_notification
 from apps.organizations.models import OrganizationMember
 from apps.organizations.services import create_organization
@@ -36,6 +37,12 @@ def websocket_path(user, organization_id, token=None):
 def test_websocket_authenticates_jwt_and_delivers_org_notification(websocket_headers):
     user = User.objects.create_user("subscriber@example.com", "StrongPass!234")
     organization = create_organization(user, "Subscribers")
+    notification = Notification.objects.create(
+        recipient=user,
+        organization=organization,
+        event_type="status_changed",
+        message="A task changed status.",
+    )
     path, protocols = websocket_path(user, organization.id)
     communicator = WebsocketCommunicator(
         application,
@@ -52,12 +59,14 @@ def test_websocket_authenticates_jwt_and_delivers_org_notification(websocket_hea
             {
                 "type": "notification",
                 "organization_id": organization.id,
-                "recipient_id": None,
+                "recipient_id": user.id,
                 "notification": {
+                    "id": notification.id,
                     "type": "status_changed",
                     "organization_id": organization.id,
-                    "task_id": 41,
+                    "task_id": None,
                     "message": "A task changed status.",
+                    "created_at": notification.created_at.isoformat(),
                 },
             },
         )
@@ -66,10 +75,12 @@ def test_websocket_authenticates_jwt_and_delivers_org_notification(websocket_hea
         return message
 
     message = async_to_sync(exchange)()
+    assert message["id"] == notification.id
     assert message["type"] == "status_changed"
     assert message["organization_id"] == organization.id
-    assert message["task_id"] == 41
+    assert message["task_id"] is None
     assert message["message"] == "A task changed status."
+    assert message["created_at"] == notification.created_at.isoformat()
 
 
 @pytest.mark.django_db(transaction=True)
@@ -322,11 +333,23 @@ def test_task_services_publish_assignment_comment_and_status_events(monkeypatch)
         "status_changed",
         "comment_added",
     ]
-    assert published[0][0][4] == assignee.id
+    assert published[0][0][4] == [assignee.id]
+    assert published[0][1]["actor_id"] == owner.id
+    assert published[1][1]["actor_id"] == owner.id
+    assert published[1][1]["organization_wide"]
     assert all(event[0][0] == organization.id for event in published)
 
 
-def test_notification_publisher_routes_and_shapes_user_events(monkeypatch):
+@pytest.mark.django_db(transaction=True)
+def test_notification_publisher_persists_and_routes_user_events(monkeypatch):
+    actor = User.objects.create_user("publisher@example.com", "StrongPass!234")
+    recipient = User.objects.create_user("recipient@example.com", "StrongPass!234")
+    organization = create_organization(actor, "Publisher")
+    OrganizationMember.objects.create(
+        organization=organization,
+        user=recipient,
+        role=OrganizationMember.Role.MEMBER,
+    )
     sent = []
 
     class RecordingLayer:
@@ -337,28 +360,33 @@ def test_notification_publisher_routes_and_shapes_user_events(monkeypatch):
         "apps.notifications.services.get_channel_layer", lambda: RecordingLayer()
     )
     publish_notification(
-        organization_id=12,
+        organization_id=organization.id,
         event_type="task_assigned",
         message="You were assigned a task.",
-        task_id=34,
-        recipient_id=56,
+        task_id=None,
+        recipients=[recipient.id],
+        actor_id=actor.id,
     )
 
+    saved = Notification.objects.get(recipient=recipient)
     assert len(sent) == 1
     group, event = sent[0]
-    assert group == "tasklane.user.56"
+    assert group == f"tasklane.user.{recipient.id}"
     assert event["type"] == "notification"
-    assert event["organization_id"] == 12
-    assert event["recipient_id"] == 56
+    assert event["organization_id"] == organization.id
+    assert event["recipient_id"] == recipient.id
     assert event["notification"]["type"] == "task_assigned"
-    assert event["notification"]["organization_id"] == 12
-    assert event["notification"]["task_id"] == 34
+    assert event["notification"]["id"] == saved.id
+    assert event["notification"]["organization_id"] == organization.id
+    assert event["notification"]["task_id"] is None
     assert event["notification"]["message"] == "You were assigned a task."
-    assert event["notification"]["id"]
     assert event["notification"]["created_at"]
 
 
+@pytest.mark.django_db
 def test_notification_publisher_fails_if_no_channel_layer():
     with override_settings(CHANNEL_LAYERS={}):
         with pytest.raises(RuntimeError, match="channel layer is not configured"):
-            publish_notification(1, "comment_added", "Commented", task_id=1)
+            publish_notification(
+                1, "comment_added", "Commented", task_id=1, recipients=[]
+            )

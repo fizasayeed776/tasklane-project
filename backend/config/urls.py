@@ -6,12 +6,14 @@ from rest_framework.routers import DefaultRouter
 from apps.organizations.views import OrganizationViewSet
 from apps.projects.views import ProjectViewSet
 from apps.tasks.views import ActivityView, CommentViewSet, DashboardView, TaskViewSet
+from apps.notifications.views import NotificationViewSet
 
 router = DefaultRouter()
 router.register("organizations", OrganizationViewSet, basename="organization")
 router.register("projects", ProjectViewSet, basename="project")
 router.register("tasks", TaskViewSet, basename="task")
 router.register("comments", CommentViewSet, basename="comment")
+router.register("notifications", NotificationViewSet, basename="notification")
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/auth/", include("apps.accounts.urls")),
