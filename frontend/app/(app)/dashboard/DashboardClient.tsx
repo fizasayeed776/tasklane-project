@@ -19,6 +19,7 @@ import {
 } from "@/lib/api";
 import { initials, relativeTime, roleLabel } from "@/lib/format";
 import AccessibleDialog from "../../components/AccessibleDialog";
+import DeleteProjectDialog from "../../components/DeleteProjectDialog";
 import QueryError from "../../components/QueryError";
 import { useToast } from "../../components/ToastProvider";
 
@@ -65,6 +66,10 @@ export default function Dashboard() {
     [inviteLinkExpiry, setInviteLinkExpiry] = useState<string | null>(null),
     [copied, setCopied] = useState(false);
   const [projectModalOpen, setProjectModalOpen] = useState(false);
+  const [projectToDelete, setProjectToDelete] = useState<{
+    project: Project;
+    taskCount?: number;
+  } | null>(null);
   const [invitePanelOpen, setInvitePanelOpen] = useState(false);
   const [memberPendingRemoval, setMemberPendingRemoval] =
     useState<OrgMember | null>(null);
@@ -403,29 +408,46 @@ export default function Dashboard() {
                 summary?.latestTaskChange || project.created_at;
               return (
                 <li key={project.id}>
-                  <Link
-                    className="flex min-h-16 flex-wrap items-center gap-x-4 gap-y-2 py-3 hover:text-accent"
-                    href={`/projects/${project.id}`}
-                  >
-                    <span className="min-w-0 flex-1 font-medium">
-                      {project.name}
-                    </span>
-                    <span
-                      className={`rounded-full px-2.5 py-1 text-xs font-medium ${project.status === "ACTIVE" ? "bg-accent-soft text-ink" : "bg-line text-muted"}`}
+                  <div className="flex items-center gap-3">
+                    <Link
+                      className="flex min-h-16 min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-2 py-3 hover:text-accent"
+                      href={`/projects/${project.id}`}
                     >
-                      {project.status === "ACTIVE" ? "Active" : "Archived"}
-                    </span>
-                    <span className="text-sm text-muted">
-                      {summary ? summary.count : "–"} tasks
-                    </span>
-                    <span className="text-xs text-muted">
-                      {summary?.latestTaskChange
-                        ? `Updated ${relativeTime(lastChanged)}`
-                        : project.created_at
-                          ? `Created ${relativeTime(project.created_at)}`
-                          : "No recent activity"}
-                    </span>
-                  </Link>
+                      <span className="min-w-0 flex-1 font-medium">
+                        {project.name}
+                      </span>
+                      <span
+                        className={`rounded-full px-2.5 py-1 text-xs font-medium ${project.status === "ACTIVE" ? "bg-accent-soft text-ink" : "bg-line text-muted"}`}
+                      >
+                        {project.status === "ACTIVE" ? "Active" : "Archived"}
+                      </span>
+                      <span className="text-sm text-muted">
+                        {summary ? summary.count : "–"} tasks
+                      </span>
+                      <span className="text-xs text-muted">
+                        {summary?.latestTaskChange
+                          ? `Updated ${relativeTime(lastChanged)}`
+                          : project.created_at
+                            ? `Created ${relativeTime(project.created_at)}`
+                            : "No recent activity"}
+                      </span>
+                    </Link>
+                    {canManage(role) && (
+                      <button
+                        type="button"
+                        className="min-h-10 shrink-0 rounded-md px-2 text-xs text-danger underline underline-offset-2 hover:bg-danger-surface"
+                        aria-label={`Delete project ${project.name}`}
+                        onClick={() =>
+                          setProjectToDelete({
+                            project,
+                            taskCount: summary?.count,
+                          })
+                        }
+                      >
+                        Delete
+                      </button>
+                    )}
+                  </div>
                 </li>
               );
             })}
@@ -966,6 +988,13 @@ export default function Dashboard() {
             </button>
           </div>
         </AccessibleDialog>
+      )}
+      {projectToDelete && (
+        <DeleteProjectDialog
+          project={projectToDelete.project}
+          taskCount={projectToDelete.taskCount}
+          onClose={() => setProjectToDelete(null)}
+        />
       )}
     </main>
   );

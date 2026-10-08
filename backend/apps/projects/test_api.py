@@ -5,6 +5,7 @@ from apps.accounts.models import User
 from apps.organizations.models import OrganizationMember
 from apps.organizations.services import create_organization
 from apps.projects.models import Project
+from apps.tasks.models import Activity, Comment, Task
 
 
 pytestmark = pytest.mark.django_db
@@ -19,11 +20,15 @@ def client_for(user):
 @pytest.fixture
 def project_world():
     owner = User.objects.create_user("owner@example.com", "StrongPass!234")
+    admin = User.objects.create_user("admin@example.com", "StrongPass!234")
     member = User.objects.create_user("member@example.com", "StrongPass!234")
     viewer = User.objects.create_user("viewer@example.com", "StrongPass!234")
     outsider = User.objects.create_user("outsider@example.com", "StrongPass!234")
     org = create_organization(owner, "Acme")
     other_org = create_organization(outsider, "Other")
+    OrganizationMember.objects.create(
+        organization=org, user=admin, role=OrganizationMember.Role.ADMIN
+    )
     OrganizationMember.objects.create(
         organization=org, user=member, role=OrganizationMember.Role.MEMBER
     )
@@ -45,6 +50,7 @@ def project_world():
     )
     return {
         "owner": owner,
+        "admin": admin,
         "member": member,
         "viewer": viewer,
         "outsider": outsider,
@@ -54,6 +60,86 @@ def project_world():
         "second": second,
         "foreign": foreign,
     }
+
+
+@pytest.mark.parametrize("role", ["OWNER", "ADMIN"])
+def test_owner_and_admin_can_delete_project_and_cascade_related_data(
+    project_world, role
+):
+    project = project_world["first"]
+    other_project = project_world["second"]
+    task = Task.objects.create(
+        project=project, title="Delete me", created_by=project_world["owner"]
+    )
+    other_task = Task.objects.create(
+        project=other_project, title="Keep me", created_by=project_world["owner"]
+    )
+    comment = Comment.objects.create(
+        task=task, user=project_world["owner"], content="Delete this comment"
+    )
+    other_comment = Comment.objects.create(
+        task=other_task, user=project_world["owner"], content="Keep this comment"
+    )
+    activity = Activity.objects.create(
+        organization=project_world["org"],
+        task=task,
+        actor=project_world["owner"],
+        verb="task_created",
+        message="Delete this activity",
+    )
+    other_activity = Activity.objects.create(
+        organization=project_world["org"],
+        task=other_task,
+        actor=project_world["owner"],
+        verb="task_created",
+        message="Keep this activity",
+    )
+
+    response = client_for(project_world[role.lower()]).delete(
+        f"/api/projects/{project.id}/"
+    )
+
+    assert response.status_code == 204
+    assert not Project.objects.filter(pk=project.id).exists()
+    assert not Task.objects.filter(pk=task.id).exists()
+    assert not Comment.objects.filter(pk=comment.id).exists()
+    assert not Activity.objects.filter(pk=activity.id).exists()
+    assert Project.objects.filter(pk=other_project.id).exists()
+    assert Task.objects.filter(pk=other_task.id).exists()
+    assert Comment.objects.filter(pk=other_comment.id).exists()
+    assert Activity.objects.filter(pk=other_activity.id).exists()
+
+
+@pytest.mark.parametrize("role", ["MEMBER", "VIEWER"])
+def test_member_and_viewer_cannot_delete_project(project_world, role):
+    project = project_world["first"]
+
+    response = client_for(project_world[role.lower()]).delete(
+        f"/api/projects/{project.id}/"
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "PERMISSION_DENIED"
+    assert Project.objects.filter(pk=project.id).exists()
+
+
+def test_user_from_another_organization_cannot_delete_project(project_world):
+    project = project_world["first"]
+
+    response = client_for(project_world["outsider"]).delete(
+        f"/api/projects/{project.id}/"
+    )
+
+    assert response.status_code == 404
+    assert Project.objects.filter(pk=project.id).exists()
+
+
+def test_project_delete_openapi_documents_success_and_error_responses():
+    response = APIClient().get("/api/schema/?format=json")
+    assert response.status_code == 200
+    delete = response.json()["paths"]["/api/projects/{id}/"]["delete"]
+
+    assert {"204", "401", "403", "404"} <= delete["responses"].keys()
 
 
 def test_project_create_update_and_delete(project_world):
