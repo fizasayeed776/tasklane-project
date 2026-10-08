@@ -59,14 +59,12 @@ def flag_overdue_tasks():
         )
         for task in overdue_tasks:
             if task.assigned_to_id:
-                transaction.on_commit(
-                    lambda task=task: publish_notification(
-                        task.project.organization_id,
-                        "task_overdue",
-                        f'Task "{task.title}" is overdue.',
-                        task.id,
-                        task.assigned_to_id,
-                    )
+                publish_notification(
+                    task.project.organization_id,
+                    "task_overdue",
+                    f'Task "{task.title}" is overdue.',
+                    task.id,
+                    [task.assigned_to_id],
                 )
 
     return len(overdue_tasks)

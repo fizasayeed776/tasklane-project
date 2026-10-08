@@ -22,6 +22,7 @@ def test_all_scheduled_tasks_are_registered():
     expected = {
         "apps.tasks.jobs.flag_overdue_tasks",
         "apps.organizations.jobs.prune_stale_invitations",
+        "apps.notifications.jobs.prune_read_notifications_job",
     }
     missing = expected - registered
     assert not missing, (

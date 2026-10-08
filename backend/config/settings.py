@@ -231,4 +231,8 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.organizations.jobs.prune_stale_invitations",
         "schedule": 86400.0,  # once per day
     },
+    "prune-read-notifications": {
+        "task": "apps.notifications.jobs.prune_read_notifications_job",
+        "schedule": 86400.0,  # once per day
+    },
 }
