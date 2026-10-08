@@ -1,6 +1,7 @@
 from datetime import timedelta
 
 import pytest
+from django.core.cache import cache
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -229,6 +230,29 @@ def test_notification_list_is_paginated(notification_world):
     assert len(response.json()["results"]) == 50
     assert response.json()["next"].endswith("page=2")
     assert response.json()["results"][0]["id"] == rows[-1].id
+
+
+@pytest.mark.django_db(transaction=True)
+def test_notification_requests_do_not_consume_account_throttle(notification_world):
+    world = notification_world
+    cache.clear()
+    try:
+        client = client_for(world["member"])
+
+        responses = [client.get("/api/notifications/unread-count/") for _ in range(15)]
+        assert all(response.status_code == 200 for response in responses)
+
+        password_response = client.post(
+            "/api/auth/password/change/",
+            {
+                "old_password": "StrongPass!234",
+                "new_password": "AnotherStrong!567",
+            },
+            format="json",
+        )
+        assert password_response.status_code == 200
+    finally:
+        cache.clear()
 
 
 @pytest.mark.django_db

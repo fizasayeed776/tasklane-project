@@ -21,7 +21,7 @@ class NotificationViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
     queryset = Notification.objects.none()
     serializer_class = NotificationSerializer
     permission_classes = [NotificationPermission]
-    throttle_scope = "auth_account"
+    throttle_scope = "notifications"
 
     def get_queryset(self):
         notifications = selectors.notifications_for_user(self.request.user)

@@ -255,7 +255,7 @@ Security notes: use a unique `DJANGO_SECRET_KEY` of at least 50 characters witho
 | Mass assignment | Serializers enumerate allowed fields; `created_by` and `organization` are read-only or derived, while project organization selection is separately role-checked | `test_task_create_rejects_foreign_assignee_and_untrusted_fields` |
 | Privilege escalation (roles) | Role permissions live in the permissions layer, enforced on the backend, not only by hiding UI buttons | `test_viewer_cannot_mutate_tasks_or_add_comments`, `test_non_admin_cannot_create_update_or_delete_projects`, `test_member_and_viewer_cannot_manage_organization_members`, `test_non_owner_cannot_delete_organization` |
 | Invalid / expired JWT | Normalized 401 errors, rotating refresh tokens with blacklist, WebSocket handshake also rejects bad tokens | `test_invalid_and_expired_tokens_have_normalized_errors`, `test_websocket_rejects_missing_and_expired_jwt` |
-| Brute force on sensitive endpoints | Per-view scoped throttling, configurable via environment (defaults: login 10/min, register 10/min, password 5/min, refresh 60/min) | `test_auth_endpoints_are_throttled`, `test_login_scope_is_throttled_at_configured_limit`, `test_throttle_rates_are_env_configurable` |
+| Brute force on sensitive endpoints | Per-view scoped throttling, configurable via environment (defaults: login 10/min, register 10/min, password 5/min, refresh 60/min, notifications 120/min) | `test_auth_endpoints_are_throttled`, `test_login_scope_is_throttled_at_configured_limit`, `test_throttle_rates_are_env_configurable` |
 | Information leaks | Consistent error envelope, no stack traces; malformed reset links do not cause a 500 | `test_password_reset_rejects_malformed_uid_without_internal_error` |
 
 ### Rate limiting
@@ -269,6 +269,7 @@ Every unauthenticated auth endpoint has its own throttle scope so that a burst o
 | `auth_refresh` | `POST /api/auth/refresh/` | 60/min | `THROTTLE_REFRESH` |
 | `auth_password` | `POST /api/auth/password/forgot/`, `POST /api/auth/password/reset/` | 5/min | `THROTTLE_PASSWORD` |
 | `auth_account` | `POST /api/auth/password/change/`, `POST /api/auth/email/change/`, `POST /api/auth/logout/` | 10/min | `THROTTLE_ACCOUNT` |
+| `notifications` | `/api/notifications/` and its unread/read actions | 120/min | `THROTTLE_NOTIFICATIONS` |
 
 All limits are per IP address. A 429 response uses the standard error envelope with `"code": "THROTTLED"` and a `Retry-After` header.
 

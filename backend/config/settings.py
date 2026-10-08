@@ -185,6 +185,8 @@ REST_FRAMEWORK = {
         "auth_password": env("THROTTLE_PASSWORD", "5/min"),
         # Authenticated account-mutation endpoints (change-password/email, logout).
         "auth_account": env("THROTTLE_ACCOUNT", "10/min"),
+        # Keep notification reads and updates separate from account mutations.
+        "notifications": env("THROTTLE_NOTIFICATIONS", "120/min"),
     },
 }
 SIMPLE_JWT = {
