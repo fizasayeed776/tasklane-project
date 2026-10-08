@@ -505,7 +505,7 @@ Backend tests enforce a minimum 80% coverage threshold. `pytest.ini` supplies a 
 
 ### Dashboard — stats, projects, recent activity, and organization management
 
-![Dashboard showing stats, projects, recent activity, org members, and danger zone](docs/screenshots/02-dasboard.png)
+![Dashboard showing stats, projects, recent activity, org members, and danger zone](docs/screenshots/02-dashboard.png)
 
 ### Viewer role — dashboard with member list and role badges
 
