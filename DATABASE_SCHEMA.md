@@ -77,13 +77,14 @@ erDiagram
         string message
         datetime created_at
     }
-    NOTIFICATION_EVENT {
-        string id "transient event ID"
-        bigint organization_id "tenant scope"
-        bigint recipient_id "optional targeted user"
-        bigint task_id "related task"
-        string type
+    NOTIFICATION {
+        bigint id PK
+        bigint recipient_id FK
+        bigint organization_id FK
+        bigint task_id "nullable FK"
+        string event_type
         string message
+        datetime read_at
         datetime created_at
     }
 
@@ -102,14 +103,14 @@ erDiagram
     ORGANIZATION ||--o{ ACTIVITY : records
     TASK o|--o{ ACTIVITY : tracks
     USER o|--o{ ACTIVITY : acts
-    ORGANIZATION ||--o{ NOTIFICATION_EVENT : scopes
-    USER o|--o{ NOTIFICATION_EVENT : receives
-    TASK o|--o{ NOTIFICATION_EVENT : references
+    ORGANIZATION ||--o{ NOTIFICATION : scopes
+    USER ||--o{ NOTIFICATION : receives
+    TASK o|--o{ NOTIFICATION : references
 ```
 
 `Activity.task_id` and `Activity.actor_id` are nullable: task history is removed with its task, while a deleted actor is retained as a null reference. `Task.assigned_to_id` is nullable and becomes null if the assignee is deleted. Created-by and organization-owner references use `PROTECT` so their source user cannot be removed while those records depend on it.
 
-`NOTIFICATION_EVENT` is a logical, transient Channels/Redis message envelope, not a persisted Django model or database table. Its shape follows `apps.notifications.services.publish_notification`; `recipient_id` is optional because organization broadcasts are delivered to member groups while assignment events can target one user.
+`Notification` is a persisted inbox row for one recipient. The Channels message is emitted after the triggering transaction commits and includes the database notification ID; the nullable task reference preserves the message if its task is later deleted.
 
 ## Indexes and constraints
 
@@ -132,6 +133,8 @@ The models also receive normal primary-key indexes and Django's implicit indexes
 | `Comment` | `comment_task_idx` | `(task_id, created_at)` | Supports task-scoped retrieval and chronological ordering without scanning all comments. |
 | `Activity` | `act_org_recent_idx` | `(organization_id, created_at DESC)` | Supports the organization activity feed, returned newest first. |
 | `Activity` | `act_task_idx` | `(task_id, created_at)` | Supports the task-specific activity history. |
+| `Notification` | `notif_recipient_recent_idx` | `(recipient_id, created_at DESC)` | Supports the recipient's newest-first notification centre without sorting their entire inbox. |
+| `Notification` | `notif_unread_recipient_idx` partial | `(recipient_id)` where `read_at IS NULL` | Supports unread-count and unread-list lookups while keeping already-read rows out of the index. |
 
 Foreign-key indexes not listed individually above are Django-generated single-column indexes on relationship fields, used for joins and referential operations. The compound and partial indexes above target measured access patterns rather than duplicating those FK indexes.
 
@@ -139,6 +142,6 @@ Foreign-key indexes not listed individually above are Django-generated single-co
 
 Membership is the tenant boundary. Projects belong to one organization; tasks belong to projects and derive their organization through that relationship. Comments and task activities inherit the tenant scope through the task/project relationship (activity also stores its organization directly for feed queries). Selectors must apply membership filtering before returning any tenant-owned rows. Project creation validates the requested organization through the role service before inserting; task creation uses a project already scoped to the caller.
 
-Task mutations and activity writes are transactional. Assignment emails and notification publication are scheduled after commit so consumers do not observe rolled-back changes.
+Task mutations, activity writes, and notification rows are transactional. Assignment emails and notification WebSocket delivery are scheduled after commit so consumers do not observe rolled-back changes.
 
 Ownership operations are also atomic. `transfer_ownership` updates both the target `OrganizationMember.role` and the `Organization.owner` FK in one transaction, so neither partial state is observable. `leave_organization` deletes the membership and bulk-unassigns tasks in the same transaction. `delete_organization` drops the organization row, relying on Django's `CASCADE` to remove all child rows — projects, tasks, comments, activity entries, pending invitations, and memberships — in one statement. No additional migration is required for these operations; they use the existing model relationships and constraints.
