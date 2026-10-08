@@ -11,8 +11,18 @@ import {
 } from "react";
 
 type ToastKind = "success" | "error";
-type ToastItem = { id: number; kind: ToastKind; message: string };
-type ToastContextValue = (kind: ToastKind, message: string) => void;
+type ToastAction = { label: string; onClick: () => void };
+type ToastItem = {
+  id: number;
+  kind: ToastKind;
+  message: string;
+  action?: ToastAction;
+};
+type ToastContextValue = (
+  kind: ToastKind,
+  message: string,
+  action?: ToastAction,
+) => void;
 
 const ToastContext = createContext<ToastContextValue | null>(null);
 
@@ -38,6 +48,15 @@ function Toast({
       role={item.kind === "error" ? "alert" : "status"}
     >
       <span className="min-w-0 flex-1">{item.message}</span>
+      {item.action && (
+        <button
+          type="button"
+          className="min-h-10 shrink-0 rounded-md px-2 font-medium underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+          onClick={item.action.onClick}
+        >
+          {item.action.label}
+        </button>
+      )}
       <button
         type="button"
         className="grid size-10 shrink-0 place-items-center rounded-md hover:bg-accent-soft"
@@ -53,9 +72,11 @@ function Toast({
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<ToastItem[]>([]);
   const nextId = useRef(0);
-  const notify = useCallback<ToastContextValue>((kind, message) => {
+  const notify = useCallback<ToastContextValue>((kind, message, action) => {
     const id = ++nextId.current;
-    setItems((current) => [...current, { id, kind, message }].slice(-4));
+    setItems((current) =>
+      [...current, { id, kind, message, action }].slice(-4),
+    );
   }, []);
   const dismiss = useCallback((id: number) => {
     setItems((current) => current.filter((item) => item.id !== id));

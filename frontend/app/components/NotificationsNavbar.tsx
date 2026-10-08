@@ -1,30 +1,25 @@
 "use client";
 
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { useEffect, useState, type RefObject } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 
-import { refreshSession } from "@/lib/api";
-import { relativeTime } from "@/lib/format";
+import { api, refreshSession, setOrganization } from "@/lib/api";
+import { notificationQueryKeys, type Notification } from "@/lib/notifications";
+import { useToast } from "./ToastProvider";
 
-type Notification = {
-  id: string;
-  type: "task_assigned" | "comment_added" | "status_changed" | string;
+type NotificationEvent = Pick<Notification, "id" | "message" | "created_at"> & {
+  type: string;
   organization_id: number;
-  task_id: number;
-  message: string;
-  created_at: string;
+  task_id: number | null;
 };
 
 type Session = { access: string; organization: string };
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-type NotificationsNavbarProps = {
-  open: boolean;
-  onToggle: () => void;
-  onClose: () => void;
-  buttonRef: RefObject<HTMLButtonElement>;
-};
+type UnreadCount = { count: number };
 
 function readSession(): Session {
   return {
@@ -33,19 +28,20 @@ function readSession(): Session {
   };
 }
 
-export default function NotificationsNavbar({
-  open,
-  onToggle,
-  onClose,
-  buttonRef,
-}: NotificationsNavbarProps) {
+export default function NotificationsNavbar() {
+  const push = useRouter().push;
+  const queryClient = useQueryClient();
+  const toast = useToast();
   const [session, setSession] = useState<Session>({
     access: "",
     organization: "",
   });
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [readIds, setReadIds] = useState<Set<string>>(() => new Set());
   const [connectionError, setConnectionError] = useState(false);
+  const unreadCount = useQuery<UnreadCount>({
+    queryKey: notificationQueryKeys.unreadCount(),
+    queryFn: () => api("/api/notifications/unread-count/"),
+    enabled: !!session.access,
+  });
 
   useEffect(() => {
     const updateSession = () => setSession(readSession());
@@ -61,8 +57,6 @@ export default function NotificationsNavbar({
   }, []);
 
   useEffect(() => {
-    setNotifications([]);
-    setReadIds(new Set());
     setConnectionError(false);
     if (!session.access || !session.organization) return;
 
@@ -83,14 +77,32 @@ export default function NotificationsNavbar({
       };
       socket.onmessage = (event) => {
         try {
-          const notification = JSON.parse(event.data) as Notification;
+          const notification = JSON.parse(event.data) as NotificationEvent;
           if (
             notification.organization_id === Number(session.organization) &&
             notification.id &&
             notification.message
           ) {
-            setNotifications((current) =>
-              [notification, ...current].slice(0, 20),
+            void queryClient.invalidateQueries({
+              queryKey: notificationQueryKeys.all,
+            });
+            toast(
+              "success",
+              notification.message,
+              notification.task_id
+                ? {
+                    label: "View",
+                    onClick: () => {
+                      if (
+                        localStorage.getItem("org") !==
+                        String(notification.organization_id)
+                      ) {
+                        setOrganization(String(notification.organization_id));
+                      }
+                      push(`/tasks/${notification.task_id}`);
+                    },
+                  }
+                : undefined,
             );
           }
         } catch (error) {
@@ -122,25 +134,20 @@ export default function NotificationsNavbar({
       if (retryTimer) clearTimeout(retryTimer);
       socket?.close(1000, "Session changed");
     };
-  }, [session.access, session.organization]);
+  }, [queryClient, push, session.access, session.organization, toast]);
 
   if (!session.access) return null;
 
-  const unreadCount = notifications.filter(
-    (notification) => !readIds.has(notification.id),
-  ).length;
+  const count = unreadCount.data?.count ?? 0;
+  const label = `Notifications${count ? ` (${count} unread)` : ""}${connectionError ? " disconnected" : ""}`;
 
   return (
     <div className="relative flex items-center">
       {session.organization && (
-        <button
-          ref={buttonRef}
-          type="button"
-          className="relative grid size-10 place-items-center rounded-md text-sm hover:bg-accent-soft"
-          aria-expanded={open}
-          aria-controls="recent-notifications"
-          aria-label={`Notifications${unreadCount ? ` (${unreadCount} unread)` : ""}${connectionError ? " disconnected" : ""}`}
-          onClick={onToggle}
+        <Link
+          href="/notifications"
+          className="relative grid size-10 place-items-center rounded-md text-sm hover:bg-accent-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+          aria-label={label}
         >
           <svg
             aria-hidden="true"
@@ -153,74 +160,12 @@ export default function NotificationsNavbar({
             <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
             <path d="M10 21h4" />
           </svg>
-          {notifications.length > 0 && (
+          {count > 0 && (
             <span className="absolute right-1 top-1 grid min-h-4 min-w-4 place-items-center rounded-full bg-danger px-1 text-[10px] font-semibold text-white">
-              {notifications.length > 9 ? "9+" : notifications.length}
+              {count > 9 ? "9+" : count}
             </span>
           )}
-        </button>
-      )}
-      {open && (
-        <section
-          id="recent-notifications"
-          className="absolute right-0 top-12 z-40 max-h-96 w-80 overflow-y-auto rounded-lg border border-line bg-surface p-3"
-        >
-          <h2 className="mb-2 font-semibold">Recent notifications</h2>
-          {notifications.length === 0 ? (
-            <p className="py-4 text-sm text-muted">
-              You’re all caught up. New activity will appear here.
-            </p>
-          ) : (
-            <ul className="space-y-2 text-sm">
-              {notifications.map((notification) => (
-                <li
-                  key={notification.id}
-                  className={`flex items-start gap-2 rounded-md border-b border-line p-2 last:border-0 ${readIds.has(notification.id) ? "" : "bg-accent-soft/50"}`}
-                >
-                  <div className="min-w-0 flex-1">
-                    <Link
-                      className="underline underline-offset-2"
-                      href={`/tasks/${notification.task_id}`}
-                      onClick={() => {
-                        setReadIds((current) =>
-                          new Set(current).add(notification.id),
-                        );
-                        onClose();
-                      }}
-                    >
-                      {notification.message}
-                    </Link>
-                    <time
-                      className="mt-1 block text-xs text-muted"
-                      dateTime={notification.created_at}
-                    >
-                      {relativeTime(notification.created_at)}
-                    </time>
-                  </div>
-                  {!readIds.has(notification.id) && (
-                    <button
-                      type="button"
-                      className="min-h-10 shrink-0 rounded-md px-2 text-xs underline underline-offset-2"
-                      aria-label={`Mark notification as read: ${notification.message}`}
-                      onClick={() =>
-                        setReadIds((current) =>
-                          new Set(current).add(notification.id),
-                        )
-                      }
-                    >
-                      Mark read
-                    </button>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-          {connectionError && (
-            <span role="status" className="ml-2 text-xs text-warn">
-              Notifications disconnected
-            </span>
-          )}
-        </section>
+        </Link>
       )}
     </div>
   );
